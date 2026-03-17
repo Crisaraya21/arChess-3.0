@@ -62,18 +62,21 @@ blackKingPos    BYTE 4      ; e8 = índice 4
 ; Mensaje de error de índice fuera de rango
 errOutOfRange   BYTE "Error: índice fuera del tablero (0-63).", 0
  
-
-
+; ---------------------------------------------------------------------------
+; Segmento de código
+; ---------------------------------------------------------------------------
+.code
+ 
 ; ===========================================================================
-; Procedimiento: Board_Init
+; Procedimiento: Tablero_Inicializar
 ; Descripción  : Inicializa el tablero con la posición estándar de ajedrez.
 ;                Rellena las 64 celdas con las piezas en su lugar inicial.
 ; Parámetros   : Ninguno
-; Retorna      : Ninguno (modifica el arreglo global 'board')
+; Retorna      : Ninguno (modifica el arreglo global 'tablero')
 ; Registros usados: EAX, EBX, ECX, ESI
 ; Preserva     : EBP
 ; ===========================================================================
-Board_Init PROC
+Tablero_Inicializar PROC
     push ebp
     mov  ebp, esp
     push eax
@@ -151,38 +154,111 @@ FillWhitePawns:
     pop  eax
     pop  ebp
     ret
-Board_Init ENDP
+Tablero_Inicializar ENDP
  
-
-
+ 
 ; ===========================================================================
-; Procedimiento: Board_GetPiece
+; Procedimiento: Tablero_ObtenerPieza
 ; Descripción  : Retorna el byte (pieza) en la posición dada del vector.
 ; Parámetros   : EAX = índice (0–63)
 ; Retorna      : AL = código de pieza en esa celda
 ;                Si el índice es inválido, AL = 0FFh (código de error)
 ; Registros usados: EAX, ESI
 ; ===========================================================================
-Board_GetPiece PROC
+Tablero_ObtenerPieza PROC
     push esi
     push ebx
  
     ; Validar rango
     cmp  eax, BOARD_SIZE
-    jae  GetPiece_Error         ; si índice >= 64, error
+    jae  ObtenerPieza_Error     ; si índice >= 64, error
  
     lea  esi, board
     mov  bl, [esi + eax]        ; leer byte en esa posición
     mov  al, bl                 ; retornar en AL
  
-    jmp  GetPiece_Done
+    jmp  ObtenerPieza_Fin
  
-GetPiece_Error:
+ObtenerPieza_Error:
     mov  al, 0FFh               ; código de error
  
-GetPiece_Done:
+ObtenerPieza_Fin:
     pop  ebx
     pop  esi
     ret
-Board_GetPiece ENDP
+Tablero_ObtenerPieza ENDP
  
+ 
+ 
+
+
+; ===========================================================================
+; Procedimiento: Tablero_EstablecerPieza
+; Descripción  : Escribe una pieza en la posición dada del vector.
+; Parámetros   : EAX = índice (0–63)
+;                BL  = código de pieza a escribir
+; Retorna      : CF = 0 si OK, CF = 1 si índice inválido
+; Registros usados: EAX, ESI
+; ===========================================================================
+Tablero_EstablecerPieza PROC
+    push esi
+ 
+    ; Validar rango
+    cmp  eax, BOARD_SIZE
+    jae  EstablecerPieza_Error
+ 
+    lea  esi, board
+    mov  [esi + eax], bl        ; escribir pieza
+ 
+    clc                         ; CF = 0: éxito
+    jmp  EstablecerPieza_Fin
+ 
+EstablecerPieza_Error:
+    stc                         ; CF = 1: error
+ 
+EstablecerPieza_Fin:
+    pop  esi
+    ret
+Tablero_EstablecerPieza ENDP
+
+; ===========================================================================
+; Procedimiento: Tablero_CoordAIndice
+; Descripción  : Convierte coordenadas (fila, columna) a índice lineal.
+;
+;   Fórmula: índice = (7 - fila) * 8 + columna
+;   donde fila    : 0=fila1 … 7=fila8  (0 es la fila más baja del tablero)
+;         columna : 0=a … 7=h
+;
+; Parámetros   : AL = fila (0–7), AH = columna (0–7)
+; Retorna      : EAX = índice (0–63), o EAX = 0FFFFFFFFh si inválido
+; Registros usados: EAX, EBX, ECX
+; ===========================================================================
+Tablero_CoordAIndice PROC
+    push ebx
+    push ecx
+ 
+    ; Validar fila (AL) y columna (AH)
+    movzx ecx, al               ; fila en ECX
+    movzx ebx, ah               ; columna en EBX
+ 
+    cmp  ecx, 8
+    jae  CoordAIndice_Error
+    cmp  ebx, 8
+    jae  CoordAIndice_Error
+ 
+    ; índice = (7 - fila) * 8 + columna
+    mov  eax, 7
+    sub  eax, ecx               ; eax = 7 - fila
+    imul eax, 8                 ; eax = (7 - fila) * 8
+    add  eax, ebx               ; eax = (7 - fila) * 8 + columna
+ 
+    jmp  CoordAIndice_Fin
+ 
+CoordAIndice_Error:
+    mov  eax, 0FFFFFFFFh        ; valor centinela de error
+ 
+CoordAIndice_Fin:
+    pop  ecx
+    pop  ebx
+    ret
+Tablero_CoordAIndice ENDP

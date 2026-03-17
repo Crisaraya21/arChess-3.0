@@ -1,4 +1,44 @@
- 
+; ===========================================================================
+; board.asm — Módulo de Representación del Tablero de Ajedrez
+;
+;
+;   - Definir el vector lineal de 64 posiciones (tablero de ajedrez)
+;   - Codificar piezas mediante bytes
+;   - Inicializar el tablero en posición estándar
+;   - Exponer procedimientos para leer/escribir celdas del tablero
+;   - Exponer procedimientos para convertir coordenadas (fila, col) <-> índice
+;
+;
+;
+; Codificación de piezas (1 byte por celda):
+;   0  = vacío
+;   --- Piezas blancas (mayúsculas) ---
+;   1  = Peón   blanco  (P)
+;   2  = Torre  blanca  (R)
+;   3  = Caballo blanco (N)
+;   4  = Alfil  blanco  (B)
+;   5  = Reina  blanca  (Q)
+;   6  = Rey    blanco  (K)
+;   --- Piezas negras (minúsculas) ---
+;   7  = Peón   negro   (p)
+;   8  = Torre  negra   (r)
+;   9  = Caballo negro  (n)
+;   10 = Alfil  negro   (b)
+;   11 = Reina  negra   (q)
+;   12 = Rey    negro   (k)
+;
+; Distribución del vector (índice 0 = a8, índice 63 = h1):
+;   índice = (7 - fila) * 8 + columna
+;   donde fila   : 0=fila1 … 7=fila8 (en ajedrez)
+;         columna: 0=a … 7=h
+;
+;   Índices 0–7   → Fila 8 (piezas negras mayores)
+;   Índices 8–15  → Fila 7 (peones negros)
+;   Índices 16–47 → Filas 6–3 (vacías al inicio)
+;   Índices 48–55 → Fila 2 (peones blancos)
+;   Índices 56–63 → Fila 1 (piezas blancas mayores)
+; =========================================================================== 
+
 INCLUDE Irvine32.inc
  
 ; ---------------------------------------------------------------------------

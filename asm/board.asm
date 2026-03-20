@@ -72,6 +72,24 @@ BOARD_COLS      EQU 8
 ; ---------------------------------------------------------------------------
 ; Segmento de datos
 ; ---------------------------------------------------------------------------
+PUBLIC Tablero_Inicializar
+PUBLIC Tablero_ObtenerPieza
+PUBLIC Tablero_EstablecerPieza
+PUBLIC Tablero_MoverPieza
+PUBLIC Tablero_EstaVacia
+PUBLIC Tablero_ObtenerColor
+PUBLIC Tablero_ObtenerTurno
+PUBLIC Tablero_CambiarTurno
+PUBLIC Tablero_ObtenerPosRey
+PUBLIC Tablero_UCIAIndice
+PUBLIC Tablero_IndiceACoord
+PUBLIC Tablero_CoordAIndice
+PUBLIC Tablero_EstablecerJaque
+PUBLIC Tablero_ObtenerJaque
+PUBLIC Tablero_ObtenerEstado
+PUBLIC Tablero_EstablecerEstado
+PUBLIC Tablero_ObtenerContadorMovimientos
+PUBLIC board
 .data
  
 ; Vector lineal de 64 bytes que representa el tablero
@@ -105,6 +123,7 @@ errOutOfRange   BYTE "Error: índice fuera del tablero (0-63).", 0
 ; ---------------------------------------------------------------------------
 ; Segmento de código
 ; ---------------------------------------------------------------------------
+
 .code
  
 ; ===========================================================================

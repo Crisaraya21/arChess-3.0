@@ -231,7 +231,7 @@ Principal_ModoLocal:
 Principal_Salir:
     ; Limpiar y terminar
     call UI_LimpiarPantalla
-    mov  eax, msgFinPartida
+   lea  eax, msgFinPartida
     call WriteString
     pop  ebp
     INVOKE ExitProcess, 0

@@ -56,6 +56,10 @@ EXTERN Tablero_MoverPieza       : PROC
 EXTERN Tablero_EstablecerPieza  : PROC
 EXTERN Tablero_ObtenerPosRey    : PROC
 EXTERN Tablero_ObtenerTurno     : PROC
+PUBLIC Validar_Movimiento
+PUBLIC Verificar_ReyEnJaque
+PUBLIC Verificar_JaqueMate
+PUBLIC Verificar_Tablas
 
 ; ---------------------------------------------------------------------------
 ; Segmento de datos local
@@ -70,6 +74,7 @@ indiceDestinoTemp   BYTE 0
 ; ---------------------------------------------------------------------------
 ; Segmento de código
 ; ---------------------------------------------------------------------------
+
 .code
 
 ; ===========================================================================
@@ -1391,7 +1396,7 @@ Verificar_JaqueMate PROC
     movzx edi, al               ; EDI = color a verificar
 
     ; Primero: ¿está en jaque?
-    mov  al, dil
+    mov  eax, edi
     call Tablero_ObtenerPosRey
     movzx eax, al               ; EAX = posición del rey
     mov  ebx, edi
@@ -1472,7 +1477,7 @@ Verificar_Tablas PROC
     movzx edi, al               ; EDI = color
 
     ; Primero: ¿está en jaque? Si lo está, no son tablas
-    mov  al, dil
+    mov  eax, edi
     call Tablero_ObtenerPosRey
     movzx eax, al
     mov  ebx, edi

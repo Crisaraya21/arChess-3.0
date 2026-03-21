@@ -120,9 +120,6 @@ Validar_Movimiento PROC
     cmp  eax, edx
     je   Validar_Ilegal
  
-    ; Guardar índices temporales para Alfil_Completo / Reina
-    mov  al,  BYTE PTR [esi]    ; FIX: use byte value of esi index
-    ; NOTE: indiceOrigenTemp se setea en cada validador que lo necesite
     mov  eax, esi
     mov  ebx, edi
  
@@ -166,13 +163,15 @@ Caso_Caballo:
     jmp  Verificar_JaquePropio
 Caso_Alfil:
     ; Guardar índices para Alfil_Completo
-    mov  byte ptr indiceOrigenTemp,  sil   ; ESI = origen (byte)
-    mov  byte ptr indiceDestinoTemp, dil   ; EDI = destino (byte)
+    ; EAX = ESI (origen) and EBX = EDI (destino) were set above at lines 123-124
+    mov  byte ptr indiceOrigenTemp,  al    ; AL = low byte of EAX (loaded from ESI) = origen
+    mov  byte ptr indiceDestinoTemp, bl    ; BL = low byte of EBX (loaded from EDI) = destino
     call Validar_Alfil_Completo
     jmp  Verificar_JaquePropio
 Caso_Reina:
-    mov  byte ptr indiceOrigenTemp,  sil
-    mov  byte ptr indiceDestinoTemp, dil
+    ; EAX = ESI (origen) and EBX = EDI (destino) were set above at lines 123-124
+    mov  byte ptr indiceOrigenTemp,  al    ; AL = low byte of EAX (loaded from ESI) = origen
+    mov  byte ptr indiceDestinoTemp, bl    ; BL = low byte of EBX (loaded from EDI) = destino
     call Validar_Reina
     jmp  Verificar_JaquePropio
 Caso_Rey:
@@ -1063,10 +1062,10 @@ Verificar_JaqueMate PROC
     movzx edi, al
  
     ; ¿Está en jaque?
-    mov  al, dil                ; FIX: pasar byte del color, no DWORD
+    mov  eax, edi               ; EAX = color
     call Tablero_ObtenerPosRey
     movzx eax, al
-    movzx ebx, dil
+    mov  ebx, edi               ; EBX = color
     call Verificar_ReyEnJaque
     cmp  al, 0
     je   JaqueMate_No
@@ -1134,10 +1133,10 @@ Verificar_Tablas PROC
     movzx edi, al
  
     ; Si está en jaque → no son tablas
-    mov  al, dil                ; FIX
+    mov  eax, edi               ; EAX = color
     call Tablero_ObtenerPosRey
     movzx eax, al
-    movzx ebx, dil
+    mov  ebx, edi               ; EBX = color
     call Verificar_ReyEnJaque
     cmp  al, 1
     je   Tablas_No

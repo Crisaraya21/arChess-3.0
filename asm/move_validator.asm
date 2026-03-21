@@ -48,14 +48,14 @@ BOARD_COLS      EQU 8
 ; Referencias externas (definidas en board.asm)
 ; ---------------------------------------------------------------------------
 EXTERN board                    : BYTE
-EXTERN Tablero_ObtenerPieza     : PROC
-EXTERN Tablero_ObtenerColor     : PROC
-EXTERN Tablero_EstaVacia        : PROC
-EXTERN Tablero_IndiceACoord     : PROC
-EXTERN Tablero_MoverPieza       : PROC
-EXTERN Tablero_EstablecerPieza  : PROC
-EXTERN Tablero_ObtenerPosRey    : PROC
-EXTERN Tablero_ObtenerTurno     : PROC
+Tablero_ObtenerPieza PROTO
+Tablero_ObtenerColor PROTO
+Tablero_EstaVacia PROTO
+Tablero_IndiceACoord PROTO
+Tablero_MoverPieza PROTO
+Tablero_EstablecerPieza PROTO
+Tablero_ObtenerPosRey PROTO
+Tablero_ObtenerTurno PROTO
  
 ; ---------------------------------------------------------------------------
 ; Declaraciones PUBLIC — exporta símbolos para main.asm y otros módulos
@@ -1400,9 +1400,8 @@ Verificar_JaqueMate PROC
     movzx edi, al               ; EDI = color a verificar
  
     ; Primero: ¿está en jaque?
-    ; FIX Win32: dil no existe en x86. EDI ya tiene el color, movemos a AL.
-    mov  eax, edi               ; EAX = color (0 o 1)
-    call Tablero_ObtenerPosRey  ; AL = posición del rey (recibe AL = color)
+    mov  eax, edi  ; FIX Win32: dil no existe, EDI tiene el color
+    call Tablero_ObtenerPosRey
     movzx eax, al               ; EAX = posición del rey
     mov  ebx, edi
     call Verificar_ReyEnJaque
@@ -1482,9 +1481,8 @@ Verificar_Tablas PROC
     movzx edi, al               ; EDI = color
  
     ; Primero: ¿está en jaque? Si lo está, no son tablas
-    ; FIX Win32: dil no existe en x86. EDI ya tiene el color, movemos a AL.
-    mov  eax, edi               ; EAX = color (0 o 1)
-    call Tablero_ObtenerPosRey  ; AL = posición del rey (recibe AL = color)
+    mov  eax, edi  ; FIX Win32: dil no existe, EDI tiene el color
+    call Tablero_ObtenerPosRey
     movzx eax, al
     mov  ebx, edi
     call Verificar_ReyEnJaque

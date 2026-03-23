@@ -1,76 +1,20 @@
 ; ===========================================================================
-; main.asm — Punto de Entrada y Coordinador General del Programa
-;
-;   - Inicializar todos los módulos del sistema al arranque
-;   - Coordinar el flujo principal del juego (bucle de partida)
-;   - Orquestar la secuencia: mostrar tablero → leer movimiento →
-;     validar → aplicar → detectar fin de partida → alternar turno
-;   - Delegar cada responsabilidad a su módulo correspondiente:
-;       board.asm         → estado del tablero
-;       move_validator.asm → validación de movimientos y detección de fin
-;       ui_console.asm    → visualización e interacción con el usuario
-;       input_handler.asm → lectura e interpretación del teclado
-;       sync_manager.asm  → sincronización con Firebase vía Python
-;       engine_connector.asm → integración con IA / pistas
-;
-;
-;
-; Flujo general:
-;   Inicio
-;     │
-;     ▼
-;   Inicializar módulos
-;     │
-;     ▼
-;   Mostrar menú principal
-;     │
-;     ├─ Jugar en línea (2 jugadores) ─────────────────────────────────-─┐
-;     ├─ Jugar vs IA                                                     │
-;     └─ Salir                                                           │
-;                                                                        │
-;   ┌──────────────────────────────────────────────────────────────────┐ │
-;   │                  BUCLE PRINCIPAL DE PARTIDA                      │ │
-;   │  Mostrar tablero                                                 │ │
-;   │  Mostrar turno / estado de jaque / reloj                         │ │
-;   │  Mostrar historial                                               │ │
-;   │  Si es turno de IA → pedir jugada a engine_connector             │ │
-;   │  Si es turno humano → leer movimiento UCI del teclado            │ │
-;   │  Validar movimiento                                              │ │
-;   │  Si legal → aplicar → sincronizar → cambiar turno                │ │
-;   │  Detectar jaque / jaque mate / tablas                            │ │
-;   │  Si fin de partida → mostrar resultado → salir del bucle         │ │
-;   └──────────────────────────────────────────────────────────────────┘ │
-;     │                                                                  │
-;     └──────────────────────────────────────────────────────────────────┘
-;
-; Dependencias directas:
-;   board.asm, move_validator.asm, ui_console.asm, input_handler.asm,
-;   sync_manager.asm, engine_connector.asm
+; main.asm - Punto de Entrada y Coordinador General del Programa
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
- 
-; ---------------------------------------------------------------------------
-; Constantes
-; ---------------------------------------------------------------------------
+
 COLOR_BLANCO        EQU 0
 COLOR_NEGRO         EQU 1
- 
 ESTADO_EN_CURSO     EQU 0
 ESTADO_GANA_BLANCAS EQU 1
 ESTADO_GANA_NEGRAS  EQU 2
 ESTADO_TABLAS       EQU 3
- 
 MODO_EN_LINEA       EQU 0
 MODO_VS_IA          EQU 1
 MODO_LOCAL          EQU 2
- 
 MAX_PISTAS          EQU 3
- 
-; ---------------------------------------------------------------------------
-; Declaraciones PROTO — reemplaza EXTERN x : PROC para Win32/MASM
-; ---------------------------------------------------------------------------
- 
+
 ; board.asm
 Tablero_Inicializar              PROTO
 Tablero_ObtenerTurno             PROTO
@@ -83,13 +27,13 @@ Tablero_EstablecerJaque          PROTO
 Tablero_ObtenerPosRey            PROTO
 Tablero_UCIAIndice               PROTO
 Tablero_ObtenerContadorMovimientos PROTO
- 
+
 ; move_validator.asm
 Validar_Movimiento               PROTO
 Verificar_ReyEnJaque             PROTO
 Verificar_JaqueMate              PROTO
 Verificar_Tablas                 PROTO
- 
+
 ; ui_console.asm
 UI_MostrarTablero                PROTO
 UI_MostrarMenuPrincipal          PROTO
@@ -104,29 +48,26 @@ UI_MostrarPista                  PROTO
 UI_MostrarPistasAgotadas         PROTO
 UI_ActualizarReloj               PROTO
 UI_LimpiarPantalla               PROTO
- 
+
 ; input_handler.asm
 Entrada_LeerMovimientoUCI        PROTO
 Entrada_LeerOpcionMenu           PROTO
 Entrada_SolicitoPista            PROTO
- 
+
 ; sync_manager.asm
 Sync_IniciarSesion               PROTO
 Sync_PublicarEstado              PROTO
 Sync_LeerEstadoRemoto            PROTO
 Sync_RegistrarMovimiento         PROTO
 Sync_VerificarActualizacion      PROTO
- 
+
 ; engine_connector.asm
 Motor_SolicitarJugada            PROTO
 Motor_SolicitarPista             PROTO
 Motor_ObtenerMejorMovimiento     PROTO
- 
-; ---------------------------------------------------------------------------
-; Segmento de datos
-; ---------------------------------------------------------------------------
+
 .data
- 
+
 modoJuego           BYTE MODO_LOCAL
 turnoIA             BYTE 0
 bufferMovUCI        BYTE 5 DUP(0)
@@ -135,41 +76,35 @@ indiceDestino       DWORD 0
 pistasUsadas        BYTE 0
 partidaActiva       BYTE 0
 actualizacionPendiente BYTE 0
- 
-msgBienvenida       BYTE "╔══════════════════════════════╗", 0Dh, 0Ah
-                    BYTE "║       arChess  3.0           ║", 0Dh, 0Ah
-                    BYTE "║  IC3101 – Arq. Computadoras  ║", 0Dh, 0Ah
-                    BYTE "╚══════════════════════════════╝", 0Dh, 0Ah, 0
- 
-msgMenuOpciones     BYTE "  1. Jugar en linea (2 jugadores)", 0Dh, 0Ah
-                    BYTE "  2. Jugar vs IA", 0Dh, 0Ah
-                    BYTE "  3. Jugar local (sin red)", 0Dh, 0Ah
-                    BYTE "  0. Salir", 0Dh, 0Ah
-                    BYTE "  Opcion: ", 0
- 
-msgMovimientoIlegal BYTE "  [!] Movimiento ilegal. Intente de nuevo.", 0Dh, 0Ah, 0
-msgPistaSolicitada  BYTE "  [?] Solicitando pista...", 0Dh, 0Ah, 0
-msgSinPistas        BYTE "  [!] No quedan pistas disponibles.", 0Dh, 0Ah, 0
-msgFinPartida       BYTE "  Partida finalizada. Gracias por jugar.", 0Dh, 0Ah, 0
-msgSincronizando    BYTE "  [~] Sincronizando con servidor...", 0Dh, 0Ah, 0
-msgEsperandoRival   BYTE "  [~] Esperando movimiento del rival...", 0Dh, 0Ah, 0
- 
-; ---------------------------------------------------------------------------
-; Segmento de código
-; ---------------------------------------------------------------------------
+
+msgBienvenida       BYTE "================================",0Dh,0Ah
+                    BYTE "       arChess  3.0             ",0Dh,0Ah
+                    BYTE "  IC3101 - Arq. Computadoras    ",0Dh,0Ah
+                    BYTE "================================",0Dh,0Ah,0
+
+msgMenuOpciones     BYTE "  1. Jugar en linea (2 jugadores)",0Dh,0Ah
+                    BYTE "  2. Jugar vs IA",0Dh,0Ah
+                    BYTE "  3. Jugar local (sin red)",0Dh,0Ah
+                    BYTE "  0. Salir",0Dh,0Ah
+                    BYTE "  Opcion: ",0
+
+msgMovimientoIlegal BYTE "  [!] Movimiento ilegal. Intente de nuevo.",0Dh,0Ah,0
+msgPistaSolicitada  BYTE "  [?] Solicitando pista...",0Dh,0Ah,0
+msgSinPistas        BYTE "  [!] No quedan pistas disponibles.",0Dh,0Ah,0
+msgFinPartida       BYTE "  Partida finalizada. Gracias por jugar.",0Dh,0Ah,0
+msgSincronizando    BYTE "  [~] Sincronizando con servidor...",0Dh,0Ah,0
+msgEsperandoRival   BYTE "  [~] Esperando movimiento del rival...",0Dh,0Ah,0
+
 .code
- 
-; ===========================================================================
-; main — Punto de entrada
-; ===========================================================================
+
 main PROC
     push ebp
     mov  ebp, esp
- 
+
     call Principal_MostrarBienvenida
-    call Entrada_LeerOpcionMenu     ; AL = opción (0-3)
+    call Entrada_LeerOpcionMenu
     movzx eax, al
- 
+
     cmp  eax, 0
     je   Principal_Salir
     cmp  eax, 1
@@ -179,24 +114,24 @@ main PROC
     cmp  eax, 3
     je   Principal_ModoLocal
     jmp  Principal_Salir
- 
+
 Principal_ModoEnLinea:
     mov  modoJuego, MODO_EN_LINEA
     mov  turnoIA,   0
     call Principal_IniciarPartida
     jmp  Principal_Salir
- 
+
 Principal_ModoVsIA:
     mov  modoJuego, MODO_VS_IA
     mov  turnoIA,   1
     call Principal_IniciarPartida
     jmp  Principal_Salir
- 
+
 Principal_ModoLocal:
     mov  modoJuego, MODO_LOCAL
     mov  turnoIA,   0
     call Principal_IniciarPartida
- 
+
 Principal_Salir:
     call UI_LimpiarPantalla
     mov  edx, OFFSET msgFinPartida
@@ -204,381 +139,331 @@ Principal_Salir:
     pop  ebp
     INVOKE ExitProcess, 0
 main ENDP
- 
- 
-; ===========================================================================
-; Principal_MostrarBienvenida
-; ===========================================================================
+
+
 Principal_MostrarBienvenida PROC
     push eax
- 
     call UI_LimpiarPantalla
- 
     mov  edx, OFFSET msgBienvenida
     call WriteString
- 
     mov  edx, OFFSET msgMenuOpciones
     call WriteString
- 
     pop  eax
     ret
 Principal_MostrarBienvenida ENDP
- 
- 
-; ===========================================================================
-; Principal_IniciarPartida
-; ===========================================================================
+
+
 Principal_IniciarPartida PROC
     push ebp
     mov  ebp, esp
     push eax
     push ebx
- 
+
     call Tablero_Inicializar
- 
     mov  pistasUsadas,           0
     mov  partidaActiva,          1
     mov  actualizacionPendiente, 0
- 
+
     cmp  modoJuego, MODO_EN_LINEA
     jne  IniciarPartida_SkipSync
- 
     mov  edx, OFFSET msgSincronizando
     call WriteString
     call Sync_IniciarSesion
     call Sync_PublicarEstado
- 
+
 IniciarPartida_SkipSync:
     call Principal_BucleJuego
- 
+
     pop  ebx
     pop  eax
     pop  ebp
     ret
 Principal_IniciarPartida ENDP
- 
- 
-; ===========================================================================
-; Principal_BucleJuego
-; ===========================================================================
+
+
 Principal_BucleJuego PROC
     push ebp
     mov  ebp, esp
     push eax
     push ebx
     push ecx
- 
+
 Bucle_Inicio:
     call Tablero_ObtenerEstado
     cmp  al, ESTADO_EN_CURSO
     jne  Bucle_FinPartida
- 
+
     call UI_LimpiarPantalla
     call UI_MostrarTablero
     call UI_MostrarTurno
     call UI_MostrarReloj
     call UI_MostrarHistorial
- 
+
     call Tablero_ObtenerJaque
     cmp  al, 0
     je   Bucle_SinJaque
     call UI_MostrarJaque
- 
+
 Bucle_SinJaque:
     cmp  modoJuego, MODO_EN_LINEA
     jne  Bucle_EscogerFuente
- 
     call Principal_EsperarRivalSiCorresponde
     cmp  al, 1
     je   Bucle_PostMovimiento
- 
+
 Bucle_EscogerFuente:
     call Tablero_ObtenerTurno
     cmp  al, COLOR_NEGRO
     jne  Bucle_TurnoHumano
     cmp  turnoIA, 1
     jne  Bucle_TurnoHumano
- 
     call Principal_TurnoIA
     jmp  Bucle_PostMovimiento
- 
+
 Bucle_TurnoHumano:
     call Entrada_SolicitoPista
     cmp  al, 1
     jne  Bucle_LeerMovimiento
- 
     call Principal_ManejarPista
     jmp  Bucle_Inicio
- 
+
 Bucle_LeerMovimiento:
     mov  edx, OFFSET bufferMovUCI
     call Entrada_LeerMovimientoUCI
     cmp  al, 0
     je   Bucle_Inicio
- 
+
     call Principal_ParsearUCI
     cmp  al, 0
     je   Bucle_MovimientoIlegal
- 
+
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   Bucle_MovimientoIlegal
- 
+
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
     call Sync_RegistrarMovimiento
     jmp  Bucle_PostMovimiento
- 
+
 Bucle_MovimientoIlegal:
     call UI_MostrarMovimientoIlegal
     call WaitMsg
     jmp  Bucle_Inicio
- 
+
 Bucle_PostMovimiento:
     call UI_ActualizarReloj
- 
-    ; Detectar jaque al rey rival
-    call Tablero_ObtenerTurno
-    xor  al, 1                      ; color rival
+
+    ; FIX: cambiar turno PRIMERO, luego verificar jaque/mate/tablas
+    ; asi Verificar_JaqueMate y Verificar_Tablas evaluan al rival
+    call Tablero_CambiarTurno
+
+    ; Detectar jaque al rey del jugador que acaba de recibir el turno
+    call Tablero_ObtenerTurno       ; AL = turno nuevo (el que recibe)
+    movzx eax, al
     push eax
+    call Tablero_ObtenerPosRey      ; AL = pos rey
     movzx eax, al
-    call Tablero_ObtenerPosRey
-    movzx eax, al
-    pop  ebx
+    pop  ebx                        ; EBX = color del rey
     call Verificar_ReyEnJaque
     cmp  al, 1
     jne  Bucle_SinJaquePost
- 
-    ; Actualizar bandera de jaque
+
+    ; Hay jaque: establecer bandera
     call Tablero_ObtenerTurno
-    xor  al, 1
-    inc  al
+    movzx eax, al
+    inc  eax
+    movzx eax, al
     call Tablero_EstablecerJaque
- 
+
     ; Verificar jaque mate
     call Tablero_ObtenerTurno
-    xor  al, 1
     call Verificar_JaqueMate
     cmp  al, 1
     jne  Bucle_SinJaquePost
- 
+
+    ; Jaque mate: quien acaba de mover gana
     call Tablero_ObtenerTurno
     cmp  al, COLOR_BLANCO
-    je   Bucle_GananBlancas
- 
+    je   Bucle_GananNegras          ; si turno actual es blancas, negras dieron mate
+
     mov  al, ESTADO_GANA_NEGRAS
-    call Tablero_EstablecerEstado
-    call UI_MostrarJaqueMate
-    jmp  Bucle_SincronizarFin
- 
-Bucle_GananBlancas:
+    jmp  Bucle_SetMate
+Bucle_GananNegras:
     mov  al, ESTADO_GANA_BLANCAS
+Bucle_SetMate:
     call Tablero_EstablecerEstado
     call UI_MostrarJaqueMate
     jmp  Bucle_SincronizarFin
- 
+
 Bucle_SinJaquePost:
     mov  al, 0
     call Tablero_EstablecerJaque
- 
+
+    ; Verificar tablas
     call Tablero_ObtenerTurno
-    xor  al, 1
     call Verificar_Tablas
     cmp  al, 1
-    jne  Bucle_CambiarTurno
- 
+    jne  Bucle_SincronizarFin
+
     mov  al, ESTADO_TABLAS
     call Tablero_EstablecerEstado
     call UI_MostrarTablas
-    jmp  Bucle_SincronizarFin
- 
-Bucle_CambiarTurno:
-    call Tablero_CambiarTurno
- 
+
 Bucle_SincronizarFin:
     cmp  modoJuego, MODO_EN_LINEA
     jne  Bucle_Inicio
     call Sync_PublicarEstado
     jmp  Bucle_Inicio
- 
+
 Bucle_FinPartida:
     call UI_MostrarTablero
     call WaitMsg
- 
+
     pop  ecx
     pop  ebx
     pop  eax
     pop  ebp
     ret
 Principal_BucleJuego ENDP
- 
- 
-; ===========================================================================
-; Principal_ParsearUCI
-; ===========================================================================
+
+
 Principal_ParsearUCI PROC
     push ebx
     push ecx
- 
+
     movzx eax, bufferMovUCI[0]
     cmp  al, 'a'
     jb   ParsearUCI_Error
     cmp  al, 'h'
     ja   ParsearUCI_Error
- 
+
     movzx ebx, bufferMovUCI[2]
     cmp  bl, 'a'
     jb   ParsearUCI_Error
     cmp  bl, 'h'
     ja   ParsearUCI_Error
- 
+
     movzx ecx, bufferMovUCI[1]
     cmp  cl, '1'
     jb   ParsearUCI_Error
     cmp  cl, '8'
     ja   ParsearUCI_Error
- 
+
     movzx ecx, bufferMovUCI[3]
     cmp  cl, '1'
     jb   ParsearUCI_Error
     cmp  cl, '8'
     ja   ParsearUCI_Error
- 
+
     mov  al, bufferMovUCI[0]
     mov  ah, bufferMovUCI[1]
     call Tablero_UCIAIndice
     cmp  eax, 0FFFFFFFFh
     je   ParsearUCI_Error
     mov  indiceOrigen, eax
- 
+
     mov  al, bufferMovUCI[2]
     mov  ah, bufferMovUCI[3]
     call Tablero_UCIAIndice
     cmp  eax, 0FFFFFFFFh
     je   ParsearUCI_Error
     mov  indiceDestino, eax
- 
+
     mov  al, 1
     jmp  ParsearUCI_Fin
- 
+
 ParsearUCI_Error:
     mov  al, 0
- 
+
 ParsearUCI_Fin:
     pop  ecx
     pop  ebx
     ret
 Principal_ParsearUCI ENDP
- 
- 
-; ===========================================================================
-; Principal_TurnoIA
-; ===========================================================================
+
+
 Principal_TurnoIA PROC
     push eax
     push ebx
- 
     call Motor_SolicitarJugada
     call Principal_ParsearUCI
     cmp  al, 0
     je   TurnoIA_Fin
- 
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   TurnoIA_Fin
- 
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
     call Sync_RegistrarMovimiento
- 
 TurnoIA_Fin:
     pop  ebx
     pop  eax
     ret
 Principal_TurnoIA ENDP
- 
- 
-; ===========================================================================
-; Principal_ManejarPista
-; ===========================================================================
+
+
 Principal_ManejarPista PROC
     push eax
- 
     movzx eax, pistasUsadas
     cmp  eax, MAX_PISTAS
     jae  Pista_Agotadas
- 
     call Motor_SolicitarPista
     call Motor_ObtenerMejorMovimiento
     call UI_MostrarPista
     inc  pistasUsadas
     jmp  Pista_Fin
- 
 Pista_Agotadas:
     call UI_MostrarPistasAgotadas
- 
 Pista_Fin:
     pop  eax
     ret
 Principal_ManejarPista ENDP
- 
- 
-; ===========================================================================
-; Principal_EsperarRivalSiCorresponde
-; ===========================================================================
+
+
 Principal_EsperarRivalSiCorresponde PROC
     push ebx
     push ecx
- 
     call Tablero_ObtenerTurno
     cmp  al, COLOR_NEGRO
     jne  Esperar_EsTurnoLocal
- 
     call UI_LimpiarPantalla
     call UI_MostrarTablero
     mov  edx, OFFSET msgEsperandoRival
     call WriteString
- 
 Esperar_PollLoop:
     call Sync_VerificarActualizacion
     cmp  al, 1
     jne  Esperar_PollLoop
- 
     call Sync_LeerEstadoRemoto
     call Principal_ParsearUCI
     cmp  al, 0
     je   Esperar_ErrorRemoto
- 
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   Esperar_ErrorRemoto
- 
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
     call Sync_RegistrarMovimiento
- 
     mov  al, 1
     jmp  Esperar_Fin
- 
 Esperar_ErrorRemoto:
     jmp  Esperar_PollLoop
- 
 Esperar_EsTurnoLocal:
     mov  al, 0
- 
 Esperar_Fin:
     pop  ecx
     pop  ebx
     ret
 Principal_EsperarRivalSiCorresponde ENDP
- 
+
 END main

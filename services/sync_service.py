@@ -1,165 +1,387 @@
 # ===========================================================================
 # sync_service.py — Servicio de Sincronización con Firebase
-#   - Autenticar al usuario con Firebase Auth (login)
+#
+# Responsabilidades:
 #   - Subir game_state.json a Firebase Realtime Database (upload)
-#   - Descargar el estado remoto y actualizar game_state.json local (download)
-#   - Escribir sync_flag.txt = "1" cuando hay nuevo estado remoto disponible
-#     para que sync_manager.asm lo detecte mediante polling
+#   - Descargar estado remoto y actualizar game_state.json local (download)
+#   - Subir moves.log a Firebase (upload)
+#   - Modo escucha: polling continuo que detecta cambios remotos y
+#     escribe sync_flag.txt = "1" para que MASM lo detecte (listen)
 #
 # Uso (lanzado por sync_manager.asm como proceso hijo):
-#   python sync_service.py login
-#   python sync_service.py upload
-#   python sync_service.py download
+#   python services\sync_service.py upload
+#   python services\sync_service.py download
+#   python services\sync_service.py listen [intervalo_segundos]
 #
 # Seguridad:
-#   - Las credenciales de Firebase (email/password, API key) se leen desde
-#     variables de entorno del sistema operativo — NUNCA en texto plano aquí.
-#   - El token de sesión (ID token de Firebase Auth) se guarda solo en memoria
-#     del proceso Python durante su ciclo de vida.
-#   - La API key de Firebase se lee de la variable FIREBASE_API_KEY.
-#   - Las credenciales del usuario de: FIREBASE_EMAIL y FIREBASE_PASSWORD.
-#   - La URL de la base de datos de: FIREBASE_DB_URL.
+#   - Las credenciales de Firebase (service account) se leen desde un
+#     archivo externo: services\firebase_API.json
+#   - NUNCA se almacenan credenciales en texto plano en este código.
+#   - La URL de la base de datos se lee de services\firebase_config.json
+#   - El archivo firebase_API.json debe tener permisos restringidos
+#     y NO debe subirse a repositorios públicos (.gitignore).
 #
-# Variables de entorno requeridas:
-#   FIREBASE_API_KEY    → clave de API del proyecto Firebase
-#   FIREBASE_EMAIL      → correo del usuario autenticado
-#   FIREBASE_PASSWORD   → contraseña del usuario (solo en entorno local seguro)
-#   FIREBASE_DB_URL     → URL de Realtime Database (ej: https://xxx.firebaseio.com)
+# Archivos de configuración requeridos:
+#   services\firebase_API.json  → Service account key de Firebase
+#   services\firebase_config.json       → {"databaseURL": "https://xxx.firebaseio.com"}
+#
+# Archivos de datos (leídos/escritos):
+#   data\game_state.json   → Estado de la partida (JSON)
+#   data\moves.log         → Historial de movimientos (texto plano)
+#   data\sync_flag.txt     → Bandera de sincronización ("0" o "1")
 # ===========================================================================
 
 import sys
 import os
 import json
 import time
-import requests
+import traceback
+
+# Firebase Admin SDK
 import firebase_admin
 from firebase_admin import credentials, db
 
 # ---------------------------------------------------------------------------
-# Credenciales directas del proyecto
+# Rutas de archivos
 # ---------------------------------------------------------------------------
-SERVICE_ACCOUNT = {
-    "type": "service_account",
-    "project_id": "proyectoensamblador",
-    "private_key_id": "4e53c7e5e49b9961d92c0e9cb69aea614f9aec62",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDfZ35oy9pgZlVS\nz7bFY8+R3FPf14q9EGkNnZT9NYXZTgSeZIPENenfh2Xck/WkKP60CwFiOR7hs9s9\nNAOwDwkFcUnTkssch4JBvclyLwk9v2UoZopBldmxp4HhyC5r7SkI+6VJhVGH60lj\nCHGKfIxIY2+AtkaOCQ3FuUroo5kMFe7NaAhVWdEN4yzhW3+W8Zg0tFpjIR4lJEgp\nRQXn7Z0Ns5LLG1hunMKqi9CzlEITX3Pr3cSPqRrXXt8+j4b0/6IhO1uWFhB1uSA0\nqDxJ9Pe0lWy+zho5awc5pgs63/8dkGNaH81P0bGPjzVk7d5kl/3a8bDv+Bb9WW1B\n7DacZMTDAgMBAAECggEAEZ5XXUtqYvzfEMNZ3jJTbeTq5nXYtrVjG5RIajm83xjk\ni1tQ+vnngl3qvh0bG8Gx6KAPkWAA2/rzuN1vxwRAiWHYWSu0AgF719RwXSVxfKGq\nCCgiEi8Pto+H0jcX1iIjgNZbwDMX7Xi0Vm+ViL7uz0ysQAHgCZaUM/o7eqJgURAJ\n/wQKr2jsKt2AZxTZIQFJ2WbodZsQ+mW2gbvC+31/psLtw5mRtIIVraswzYaaQ+qW\nTE+bmXSzkNrDxFOInOg7C+nGxzIF+pAqF6zpmY/83cC/DXGSpg8MflEy1QnhQNV1\nwRUm6IsXKV42Ysj5xRQ1Kca1QKllCV5a/wozjPaiNQKBgQD5OObTYZSOIh2btzuY\ndjSQw9ILNtpBdq09yWuyCaTPKwykQXfsHClzuN2Gj3sYIBfLM2yDi0rzmACrA5Nh\nIf6+I+e+WAyUsIF/70y3Aw9RQr1Sr4D7SK6OIN5y9JIlBwUDvG+8TB2dOu4pepnD\nmKGiWfSrM8ctCYRVqAcfwQ4+bwKBgQDletiLYsndK6IjpdcVBoQTawB6+3aBq6Hd\nWoLWDCz1/hA7p9xE90yj7Se9liwk/w0BA6KETTAdBELoEoDeWq0WNOixR2h/7Tso\n6NvEWw1A61zHmzg223P1FDzzX/NYO4I0uF1gDlPuEfEswSAxlAS1meijmKU6J5Ka\nkNiBBJaI7QKBgQDFtraoi4lnGPmUR1EoKt6Y2kEQVHvh41yc3+ZoX+43zFdDGA0j\na1QXUlmsHrfw88Tsl+dGlILprXUaNsP9ExMdlS6Mex2/+CdEb3vU1MCaHvBDYKha\nsdaJOto/KHeomGEKDbw3DcuQqOe4UGMcIUJZojPQfktNF3e83IiKUIYUUQKBgQDg\npO2vJbovRTOoagSvlH1e9PS3b8uHDRmbs6s5Fxo8hcYmYCEFcoIYR2UL9yKn5PY5\n8/D4Swe6oB1PSi3VfjbK8miIgzsNYJL1bV8WTXwf/UgKLy1MpnBRjspMBbYWvcqt\nCX5/Ngd7mxzZjwWRAzHJBS30WM4GrA6cOQd45aDn0QKBgQDtKNanZ39f/NNvOOcN\n6oK1TNh3i2Kzg3dnBJhiPnJSkJAUTg+7S6AWMK/fyyUogplnfuFAqN/xzRKmybGQ\nkKugt1PQBQe56k49+22c7rych4d6WIBRuTxUbM4csEovuEmO9c9zNN7SXevSqUvo\nEgJ8q8voTUaqvZrbA5oIG7MEBw==\n-----END PRIVATE KEY-----\n",
-    "client_email": "firebase-adminsdk-fbsvc@proyectoensamblador.iam.gserviceaccount.com",
-    "client_id": "116698727296411017436",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40proyectoensamblador.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
-}
+# Directorio base: donde está este script (services/)
+DIR_SERVICES = os.path.dirname(os.path.abspath(__file__))
+DIR_RAIZ     = os.path.dirname(DIR_SERVICES)
+DIR_DATA     = os.path.join(DIR_RAIZ, "data")
 
-DB_URL = "https://proyectoensamblador-default-rtdb.firebaseio.com"
+RUTA_ESTADO      = os.path.join(DIR_DATA, "game_state.json")
+RUTA_MOVES_LOG   = os.path.join(DIR_DATA, "moves.log")
+RUTA_BANDERA     = os.path.join(DIR_DATA, "sync_flag.txt")
+
+RUTA_CREDENCIALES = os.path.join(DIR_SERVICES, "firebase_API.json")
+RUTA_CONFIG       = os.path.join(DIR_SERVICES, "firebase_config.json")
+
 
 # ---------------------------------------------------------------------------
-# Rutas de archivos locales
+# Cargar configuración de Firebase desde archivos externos
 # ---------------------------------------------------------------------------
-RUTA_ESTADO  = os.path.join("data", "game_state.json")
-RUTA_BANDERA = os.path.join("data", "sync_flag.txt")
+def cargar_configuracion():
+    """
+    Lee firebase_API.json y firebase_config.json.
+    Retorna (cred_path, db_url) o lanza excepción si no existen.
+    """
+    if not os.path.exists(RUTA_CREDENCIALES):
+        raise FileNotFoundError(
+            f"[SYNC] No se encontró el archivo de credenciales: "
+            f"{RUTA_CREDENCIALES}\n"
+            f"       Descargue la service account key desde la consola de "
+            f"Firebase y guárdela como firebase_API.json en la "
+            f"carpeta services/."
+        )
+
+    if not os.path.exists(RUTA_CONFIG):
+        raise FileNotFoundError(
+            f"[SYNC] No se encontró el archivo de configuración: "
+            f"{RUTA_CONFIG}\n"
+            f'       Cree el archivo con: {{"databaseURL": "https://su-proyecto.firebaseio.com"}}'
+        )
+
+    with open(RUTA_CONFIG, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    db_url = config.get("databaseURL", "")
+    if not db_url:
+        raise ValueError(
+            "[SYNC] El archivo firebase_config.json no contiene 'databaseURL'."
+        )
+
+    return RUTA_CREDENCIALES, db_url
+
 
 # ---------------------------------------------------------------------------
-# Inicializar Firebase Admin SDK (solo una vez)
+# Inicializar Firebase Admin SDK (solo una vez por proceso)
 # ---------------------------------------------------------------------------
-if not firebase_admin._apps:
-    cred = credentials.Certificate(SERVICE_ACCOUNT)
-    firebase_admin.initialize_app(cred, {"databaseURL": DB_URL})
+def inicializar_firebase():
+    """Inicializa Firebase Admin SDK si no está inicializado."""
+    if not firebase_admin._apps:
+        cred_path, db_url = cargar_configuracion()
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred, {"databaseURL": db_url})
+        print(f"[SYNC] Firebase inicializado. DB: {db_url}")
 
 
 # ===========================================================================
-# Funciones principales
+# Funciones de utilidad
 # ===========================================================================
 
-def obtener_game_id() -> str:
-    try:
-        with open(RUTA_ESTADO, "r", encoding="utf-8") as f:
-            return json.load(f).get("gameId", "partida_default")
-    except:
-        return "partida_default"
+def asegurar_directorio_data():
+    """Crea el directorio data/ si no existe."""
+    os.makedirs(DIR_DATA, exist_ok=True)
 
 
-def escribir_bandera(valor: str):
-    os.makedirs("data", exist_ok=True)
-    with open(RUTA_BANDERA, "w", encoding="utf-8") as f:
-        f.write(valor)
-
-
-def subir_estado() -> bool:
+def obtener_game_id():
+    """Lee el gameId del game_state.json local."""
     try:
         with open(RUTA_ESTADO, "r", encoding="utf-8") as f:
             estado = json.load(f)
-    except Exception as e:
-        print(f"[SYNC] Error leyendo game_state.json: {e}")
+            return estado.get("gameId", "partida_default")
+    except (FileNotFoundError, json.JSONDecodeError):
+        return "partida_default"
+
+
+def obtener_version_local():
+    """Lee la versión del game_state.json local."""
+    try:
+        with open(RUTA_ESTADO, "r", encoding="utf-8") as f:
+            estado = json.load(f)
+            return estado.get("version", 0)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 0
+
+
+def escribir_bandera(valor):
+    """Escribe un valor ('0' o '1') en sync_flag.txt."""
+    asegurar_directorio_data()
+    with open(RUTA_BANDERA, "w", encoding="utf-8") as f:
+        f.write(str(valor))
+
+
+def leer_bandera():
+    """Lee el valor actual de sync_flag.txt."""
+    try:
+        with open(RUTA_BANDERA, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "0"
+
+
+# ===========================================================================
+# Funciones principales de sincronización
+# ===========================================================================
+
+def subir_estado():
+    """
+    Lee game_state.json local y lo sube a Firebase Realtime Database.
+    Ruta en Firebase: /partidas/{gameId}/estado
+    
+    Retorna True si éxito, False si error.
+    """
+    try:
+        with open(RUTA_ESTADO, "r", encoding="utf-8") as f:
+            estado = json.load(f)
+    except FileNotFoundError:
+        print("[SYNC] Error: game_state.json no encontrado.")
+        return False
+    except json.JSONDecodeError as e:
+        print(f"[SYNC] Error parseando game_state.json: {e}")
         return False
 
     game_id = estado.get("gameId", "partida_default")
-    ref = db.reference(f"/partidas/{game_id}/estado")
-    ref.set(estado)
-    print(f"[SYNC] Estado subido. Versión: {estado.get('version', '?')}")
-    return True
+    version = estado.get("version", "?")
+
+    try:
+        ref = db.reference(f"/partidas/{game_id}/estado")
+        ref.set(estado)
+        print(f"[SYNC] Estado subido. gameId={game_id}, version={version}")
+        return True
+    except Exception as e:
+        print(f"[SYNC] Error subiendo estado a Firebase: {e}")
+        return False
 
 
-def descargar_estado() -> bool:
+def subir_historial():
+    """
+    Lee moves.log local y lo sube a Firebase como texto.
+    Ruta en Firebase: /partidas/{gameId}/historial
+    """
     game_id = obtener_game_id()
-    ref = db.reference(f"/partidas/{game_id}/estado")
-    estado_remoto = ref.get()
 
-    if not estado_remoto:
+    try:
+        with open(RUTA_MOVES_LOG, "r", encoding="utf-8") as f:
+            historial = f.read()
+    except FileNotFoundError:
+        historial = ""
+
+    try:
+        ref = db.reference(f"/partidas/{game_id}/historial")
+        ref.set(historial)
+        return True
+    except Exception as e:
+        print(f"[SYNC] Error subiendo historial: {e}")
+        return False
+
+
+def descargar_estado():
+    """
+    Descarga el estado desde Firebase y lo compara con el local.
+    Si la versión remota es mayor, actualiza game_state.json local
+    y escribe sync_flag.txt = "1" para notificar a MASM.
+    
+    Retorna True si se descargó un estado nuevo, False si no.
+    """
+    game_id = obtener_game_id()
+
+    try:
+        ref = db.reference(f"/partidas/{game_id}/estado")
+        estado_remoto = ref.get()
+    except Exception as e:
+        print(f"[SYNC] Error descargando de Firebase: {e}")
+        return False
+
+    if not estado_remoto or not isinstance(estado_remoto, dict):
         print("[SYNC] No hay estado remoto disponible.")
         return False
 
     version_remota = estado_remoto.get("version", 0)
-    version_local = 0
-
-    try:
-        with open(RUTA_ESTADO, "r", encoding="utf-8") as f:
-            version_local = json.load(f).get("version", 0)
-    except:
-        pass
+    version_local = obtener_version_local()
 
     if version_remota > version_local:
-        os.makedirs("data", exist_ok=True)
+        asegurar_directorio_data()
         with open(RUTA_ESTADO, "w", encoding="utf-8") as f:
             json.dump(estado_remoto, f, ensure_ascii=False, indent=2)
+
         escribir_bandera("1")
-        print(f"[SYNC] Estado nuevo descargado. Versión: {version_remota}")
+        print(f"[SYNC] Estado nuevo descargado. "
+              f"Version remota={version_remota}, local={version_local}")
         return True
     else:
-        print(f"[SYNC] Sin cambios. Versión local: {version_local}")
         return False
 
 
-def modo_escucha(intervalo: int = 1):
-    print(f"[SYNC] Escuchando cambios cada {intervalo}s...")
+def descargar_historial():
+    """Descarga el historial desde Firebase y lo guarda en moves.log."""
+    game_id = obtener_game_id()
+
+    try:
+        ref = db.reference(f"/partidas/{game_id}/historial")
+        historial = ref.get()
+    except Exception as e:
+        print(f"[SYNC] Error descargando historial: {e}")
+        return False
+
+    if historial and isinstance(historial, str):
+        asegurar_directorio_data()
+        with open(RUTA_MOVES_LOG, "w", encoding="utf-8") as f:
+            f.write(historial)
+        return True
+    return False
+
+
+# ===========================================================================
+# Modo escucha (listener) — corre en background
+# ===========================================================================
+
+def modo_escucha(intervalo=1):
+    """
+    Polling continuo a Firebase.
+    Cada 'intervalo' segundos verifica si hay un estado nuevo.
+    Si lo hay, descarga y escribe la bandera para MASM.
+    
+    Este proceso se lanza por sync_manager.asm con CreateProcessA
+    y corre indefinidamente hasta que el proceso padre lo termine.
+    
+    Args:
+        intervalo: segundos entre cada verificación (default: 1)
+    """
+    print(f"[SYNC] Modo escucha iniciado. Polling cada {intervalo}s...")
+
+    errores_consecutivos = 0
+    MAX_ERRORES = 10
+
     while True:
         try:
-            descargar_estado()
+            # Solo verificar si MASM ya procesó la actualización anterior
+            bandera_actual = leer_bandera()
+            if bandera_actual == "1":
+                # MASM aún no procesó el cambio anterior, esperar
+                time.sleep(intervalo)
+                continue
+
+            nuevo = descargar_estado()
+            if nuevo:
+                descargar_historial()
+                errores_consecutivos = 0
+            else:
+                errores_consecutivos = 0  # no hay error, solo no hay cambios
+
         except Exception as e:
-            print(f"[SYNC] Error en polling: {e}")
+            errores_consecutivos += 1
+            print(f"[SYNC] Error en polling ({errores_consecutivos}): {e}")
+
+            if errores_consecutivos >= MAX_ERRORES:
+                print(f"[SYNC] Demasiados errores consecutivos "
+                      f"({MAX_ERRORES}). Deteniendo listener.")
+                break
+
+            # Backoff exponencial ante errores repetidos
+            time.sleep(min(intervalo * errores_consecutivos, 30))
+            continue
+
         time.sleep(intervalo)
+
+
+# ===========================================================================
+# Comando combinado: upload (estado + historial)
+# ===========================================================================
+
+def comando_upload():
+    """Sube tanto el estado como el historial a Firebase."""
+    ok_estado = subir_estado()
+    ok_historial = subir_historial()
+    return ok_estado
+
+
+def comando_download():
+    """Descarga estado e historial desde Firebase."""
+    ok_estado = descargar_estado()
+    ok_historial = descargar_historial()
+    return ok_estado
 
 
 # ===========================================================================
 # Punto de entrada
 # ===========================================================================
+
 def main():
     if len(sys.argv) < 2:
         print("Uso: python sync_service.py [upload|download|listen]")
+        print("")
+        print("Comandos:")
+        print("  upload    - Sube game_state.json y moves.log a Firebase")
+        print("  download  - Descarga estado remoto de Firebase")
+        print("  listen [s]- Polling continuo (s = intervalo en segundos)")
         sys.exit(1)
 
     comando = sys.argv[1].lower()
 
+    try:
+        # Inicializar Firebase (carga credenciales desde archivo externo)
+        inicializar_firebase()
+    except (FileNotFoundError, ValueError) as e:
+        print(str(e))
+        sys.exit(1)
+    except Exception as e:
+        print(f"[SYNC] Error inicializando Firebase: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+
     if comando == "upload":
-        sys.exit(0 if subir_estado() else 1)
+        exito = comando_upload()
+        sys.exit(0 if exito else 1)
+
     elif comando == "download":
-        sys.exit(0 if descargar_estado() else 1)
+        exito = comando_download()
+        sys.exit(0 if exito else 1)
+
     elif comando == "listen":
-        intervalo = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+        intervalo = 1
+        if len(sys.argv) > 2:
+            try:
+                intervalo = int(sys.argv[2])
+                if intervalo < 1:
+                    intervalo = 1
+            except ValueError:
+                intervalo = 1
         modo_escucha(intervalo)
+
     else:
         print(f"[SYNC] Comando desconocido: '{comando}'")
+        print("  Comandos válidos: upload, download, listen")
         sys.exit(1)
 
 

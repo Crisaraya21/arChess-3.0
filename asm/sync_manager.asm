@@ -1,24 +1,16 @@
 ; ===========================================================================
-; sync_manager.asm — Módulo Puente entre MASM y Servicio Python
+; sync_manager.asm — Módulo Puente MASM ↔ Python (con Subespacios a/b)
 ;
-; Responsabilidades:
-;   - Lanzar sync_service.py como proceso hijo (CreateProcessA)
-;   - Coordinar la publicación del estado local a Firebase (upload)
-;   - Coordinar la descarga del estado remoto desde Firebase (download)
-;   - Detectar actualizaciones remotas leyendo sync_flag.txt (polling)
-;   - Registrar movimientos en moves.log y actualizar game_state.json
-;
-; Flujo de sincronización:
-;   1. MASM escribe game_state.json con Archivo_EscribirEstado
-;   2. MASM lanza "python sync_service.py upload" como proceso hijo
-;   3. Python lee game_state.json y lo sube a Firebase
-;   4. Para recibir: Python (en modo listen) descarga el estado y
-;      escribe sync_flag.txt = "1"
-;   5. MASM detecta sync_flag.txt = "1" con polling
-;   6. MASM lee game_state.json actualizado con Archivo_LeerEstado
+; Sistema de subespacios:
+;   Cada cliente tiene un rol: 'a' o 'b'.
+;   - Cliente A escribe en /cliente_a/ y lee de /cliente_b/
+;   - Cliente B escribe en /cliente_b/ y lee de /cliente_a/
+;   Los comandos Python ahora incluyen el rol:
+;     "python services\sync_service.py upload a"
+;     "python services\sync_service.py listen b"
 ;
 ; Dependencias:
-;   - file_manager.asm (Archivo_EscribirEstado, Archivo_LeerEstado, etc.)
+;   - file_manager.asm
 ;   - Irvine32.inc
 ;   - Win32 API: CreateProcessA, WaitForSingleObject, CloseHandle, Sleep
 ; ===========================================================================
@@ -32,15 +24,12 @@ INFINITE_WAIT       EQU 0FFFFFFFFh
 NORMAL_PRIORITY     EQU 00000020h
 STARTF_USESHOWWINDOW EQU 00000001h
 SW_HIDE             EQU 0
-WAIT_TIMEOUT        EQU 00000102h
 
-; Tiempo de espera entre polls (milisegundos)
-POLL_INTERVAL_MS    EQU 1000       ; 1 segundo
-; Tiempo máximo de espera para proceso hijo (ms)
-PROCESS_TIMEOUT_MS  EQU 15000      ; 15 segundos
+POLL_INTERVAL_MS    EQU 1000
+PROCESS_TIMEOUT_MS  EQU 15000
 
 ; ---------------------------------------------------------------------------
-; Estructuras Win32 para CreateProcessA
+; Estructuras Win32
 ; ---------------------------------------------------------------------------
 STARTUPINFO STRUCT
     cb              DWORD ?
@@ -74,26 +63,16 @@ PROCESS_INFORMATION ENDS
 ; Prototipos Win32
 ; ---------------------------------------------------------------------------
 CreateProcessA PROTO,
-    lpAppName:PTR BYTE,
-    lpCmdLine:PTR BYTE,
-    lpProcAttr:DWORD,
-    lpThreadAttr:DWORD,
-    bInheritHandles:DWORD,
-    dwCreationFlags:DWORD,
-    lpEnvironment:DWORD,
-    lpCurrentDir:DWORD,
+    lpAppName:PTR BYTE, lpCmdLine:PTR BYTE,
+    lpProcAttr:DWORD, lpThreadAttr:DWORD,
+    bInheritHandles:DWORD, dwCreationFlags:DWORD,
+    lpEnvironment:DWORD, lpCurrentDir:DWORD,
     lpStartupInfo:PTR STARTUPINFO,
     lpProcInfo:PTR PROCESS_INFORMATION
 
-WaitForSingleObject PROTO,
-    hHandle:DWORD,
-    dwMilliseconds:DWORD
-
-CloseHandle PROTO,
-    hObject:DWORD
-
-Sleep PROTO,
-    dwMilliseconds:DWORD
+WaitForSingleObject PROTO, hHandle:DWORD, dwMilliseconds:DWORD
+CloseHandle PROTO, hObject:DWORD
+Sleep PROTO, dwMilliseconds:DWORD
 
 ; ---------------------------------------------------------------------------
 ; Referencias externas — file_manager.asm
@@ -116,7 +95,6 @@ Archivo_EscribirBandera      PROTO
 Archivo_GenerarFEN           PROTO
 Archivo_IncrementarVersion   PROTO
 
-; Referencias externas — board.asm
 Tablero_ObtenerTurno               PROTO
 Tablero_ObtenerContadorMovimientos PROTO
 
@@ -125,28 +103,39 @@ Tablero_ObtenerContadorMovimientos PROTO
 ; ===========================================================================
 .data
 
-; --- Comandos para lanzar Python ---
-; sync_service.py
-cmdUpload       BYTE "python services\sync_service.py upload", 0
-cmdDownload     BYTE "python services\sync_service.py download", 0
-cmdListen       BYTE "python services\sync_service.py listen", 0
+; --- Plantillas de comandos (sin rol, se completan en runtime) ---
+; El formato final será: "python services\sync_service.py upload a\0"
+; Usamos buffers de 64 bytes para construir el comando completo.
+
+cmdBase         BYTE "python services\sync_service.py ", 0
+
+; Sufijos de comando (se concatenan después del base + comando + espacio + rol)
+sufUpload       BYTE "upload ", 0
+sufDownload     BYTE "download ", 0
+sufListen       BYTE "listen ", 0
+
+; Buffer donde se construye el comando completo antes de lanzar
+cmdBuffer       BYTE 80 DUP(0)
 
 ; --- Estructuras Win32 ---
 si              STARTUPINFO <>
 pi              PROCESS_INFORMATION <>
 
+; --- Rol del cliente: 'a' o 'b' (seteado por main.asm) ---
+PUBLIC syncRolCliente
+syncRolCliente  BYTE 'a'           ; por defecto 'a', main.asm lo cambia
+
 ; --- Buffer para último movimiento UCI (compartido con main) ---
 PUBLIC syncLastMove
 syncLastMove    BYTE 8 DUP(0)
 
-; --- Estado interno del módulo ---
-syncActiva      BYTE 0         ; 1 si la sincronización está activa
-listenProcHandle DWORD 0       ; Handle del proceso listen en background
+; --- Estado interno ---
+syncActiva      BYTE 0
+listenProcHandle DWORD 0
 
-; --- Mensajes de consola ---
+; --- Mensajes ---
 msgSyncOk       BYTE "  [SYNC] Sincronizacion exitosa.", 0Dh, 0Ah, 0
 msgSyncErr      BYTE "  [SYNC] Error de sincronizacion.", 0Dh, 0Ah, 0
-msgSyncDetect   BYTE "  [SYNC] Cambio detectado.", 0Dh, 0Ah, 0
 
 ; ===========================================================================
 ;                       SEGMENTO DE CÓDIGO
@@ -161,29 +150,74 @@ PUBLIC Sync_VerificarActualizacion
 
 
 ; ===========================================================================
-; Procedimiento: Sync_IniciarSesion
-; Descripción : Inicializa la sincronización al comenzar una partida online.
-;               1. Inicializa el estado del archivo con valores por defecto
-;               2. Escribe game_state.json inicial
-;               3. Sube el estado a Firebase (upload)
-;               4. Lanza el proceso Python en modo listen (background)
-;               5. Limpia la bandera sync_flag.txt
+; Sync_ConstruirComando — Construye el comando completo en cmdBuffer.
 ;
-; Parámetros  : Ninguno
-; Retorna     : AL = 1 si éxito, 0 si error
+; Formato: "python services\sync_service.py <sufijo><rol>\0"
+;
+; Parámetros: ESI = puntero al sufijo (ej: "upload ", "listen ")
+; Usa:        syncRolCliente para agregar 'a' o 'b' al final
+; Resultado:  cmdBuffer contiene el comando listo para CreateProcessA
+; ===========================================================================
+Sync_ConstruirComando PROC
+    push eax
+    push esi
+    push edi
+
+    ; Destino: cmdBuffer
+    lea  edi, cmdBuffer
+
+    ; Copiar base: "python services\sync_service.py "
+    push esi                   ; guardar sufijo
+    lea  esi, cmdBase
+Cmd_CopiarBase:
+    mov  al, [esi]
+    cmp  al, 0
+    je   Cmd_BaseDone
+    mov  [edi], al
+    inc  esi
+    inc  edi
+    jmp  Cmd_CopiarBase
+Cmd_BaseDone:
+    pop  esi                   ; restaurar sufijo
+
+    ; Copiar sufijo: "upload " o "listen " etc.
+Cmd_CopiarSufijo:
+    mov  al, [esi]
+    cmp  al, 0
+    je   Cmd_SufijoDone
+    mov  [edi], al
+    inc  esi
+    inc  edi
+    jmp  Cmd_CopiarSufijo
+Cmd_SufijoDone:
+
+    ; Agregar rol: 'a' o 'b'
+    mov  al, syncRolCliente
+    mov  [edi], al
+    inc  edi
+
+    ; Null terminator
+    mov  BYTE PTR [edi], 0
+
+    pop  edi
+    pop  esi
+    pop  eax
+    ret
+Sync_ConstruirComando ENDP
+
+
+; ===========================================================================
+; Sync_IniciarSesion
 ; ===========================================================================
 Sync_IniciarSesion PROC
     push ebx
     push ecx
     push edx
 
-    ; Marcar sincronización como activa
     mov  syncActiva, 1
 
     ; Inicializar estado de la partida
     call Archivo_InicializarEstado
-
-    ; Escribir game_state.json inicial
     call Archivo_EscribirEstado
     cmp  al, 0
     je   IniciarSesion_Error
@@ -192,13 +226,15 @@ Sync_IniciarSesion PROC
     mov  al, '0'
     call Archivo_EscribirBandera
 
-    ; Subir estado inicial a Firebase
-    lea  edx, cmdUpload
+    ; Subir estado inicial: "python ... upload a" (o b)
+    lea  esi, sufUpload
+    call Sync_ConstruirComando
+    lea  edx, cmdBuffer
     call Sync_LanzarProceso
     cmp  al, 0
     je   IniciarSesion_Error
 
-    ; Lanzar listener en background (no esperamos a que termine)
+    ; Lanzar listener en background: "python ... listen a" (o b)
     call Sync_LanzarListener
 
     mov  al, 1
@@ -216,35 +252,25 @@ Sync_IniciarSesion ENDP
 
 
 ; ===========================================================================
-; Procedimiento: Sync_PublicarEstado
-; Descripción : Publica el estado actual de la partida en Firebase.
-;               1. Incrementa la versión
-;               2. Actualiza FEN y turno
-;               3. Escribe game_state.json
-;               4. Lanza "python sync_service.py upload"
-;
-; Parámetros  : Ninguno
-; Retorna     : AL = 1 si éxito, 0 si error
+; Sync_PublicarEstado
 ; ===========================================================================
 Sync_PublicarEstado PROC
     push ebx
     push ecx
     push edx
 
-    ; Verificar que sincronización esté activa
     cmp  syncActiva, 0
     je   PublicarEst_Skip
 
-    ; Incrementar versión
     call Archivo_IncrementarVersion
-
-    ; Escribir game_state.json actualizado
     call Archivo_EscribirEstado
     cmp  al, 0
     je   PublicarEst_Error
 
-    ; Lanzar proceso de upload
-    lea  edx, cmdUpload
+    ; Construir y lanzar: "python ... upload a"
+    lea  esi, sufUpload
+    call Sync_ConstruirComando
+    lea  edx, cmdBuffer
     call Sync_LanzarProceso
     cmp  al, 0
     je   PublicarEst_Error
@@ -257,7 +283,7 @@ PublicarEst_Error:
     jmp  PublicarEst_Fin
 
 PublicarEst_Skip:
-    mov  al, 1                 ; no es error, simplemente no hay sync
+    mov  al, 1
 
 PublicarEst_Fin:
     pop  edx
@@ -268,17 +294,7 @@ Sync_PublicarEstado ENDP
 
 
 ; ===========================================================================
-; Procedimiento: Sync_LeerEstadoRemoto
-; Descripción : Lee el estado remoto que ya fue descargado por el listener.
-;               El listener (sync_service.py listen) ya escribió el
-;               game_state.json actualizado cuando detectó cambios.
-;               Este procedimiento solo necesita leer el archivo local.
-;
-;               También copia el lastMove del estado remoto a syncLastMove
-;               para que main.asm pueda parsearlo como movimiento UCI.
-;
-; Parámetros  : Ninguno
-; Retorna     : AL = 1 si éxito, 0 si error
+; Sync_LeerEstadoRemoto
 ; ===========================================================================
 Sync_LeerEstadoRemoto PROC
     push ebx
@@ -287,12 +303,12 @@ Sync_LeerEstadoRemoto PROC
     push esi
     push edi
 
-    ; Leer game_state.json actualizado por el listener
+    ; Leer game_state.json (ya actualizado por el listener)
     call Archivo_LeerEstado
     cmp  al, 0
     je   LeerRemoto_Error
 
-    ; Copiar lastMove a syncLastMove para que main pueda parsearlo
+    ; Copiar lastMove a syncLastMove
     lea  esi, archivoLastMove
     lea  edi, syncLastMove
     mov  al, [esi+0]
@@ -305,7 +321,7 @@ Sync_LeerEstadoRemoto PROC
     mov  [edi+3], al
     mov  BYTE PTR [edi+4], 0
 
-    ; Limpiar bandera después de procesar
+    ; Limpiar bandera
     mov  al, '0'
     call Archivo_EscribirBandera
 
@@ -326,23 +342,12 @@ Sync_LeerEstadoRemoto ENDP
 
 
 ; ===========================================================================
-; Procedimiento: Sync_RegistrarMovimiento
-; Descripción : Registra un movimiento en moves.log y actualiza el
-;               campo lastMove en el estado.
-;               Se llama después de cada movimiento exitoso (humano o IA).
-;
-; Parámetros  : Ninguno (usa bufferMovUCI de main.asm indirectamente;
-;               el lastMove ya fue seteado por main antes de llamar aquí)
-;
-; Nota: main.asm debe llamar Archivo_ActualizarLastMove ANTES de llamar
-;       este procedimiento, o pasar EDX = puntero al movimiento UCI.
-;       Por simplicidad, este proc lee archivoLastMove directamente.
+; Sync_RegistrarMovimiento
 ; ===========================================================================
 Sync_RegistrarMovimiento PROC
     push eax
     push edx
 
-    ; Registrar en moves.log
     lea  edx, archivoLastMove
     call Archivo_RegistrarMovimiento
 
@@ -353,23 +358,15 @@ Sync_RegistrarMovimiento ENDP
 
 
 ; ===========================================================================
-; Procedimiento: Sync_VerificarActualizacion
-; Descripción : Verifica si hay un nuevo estado remoto disponible.
-;               Lee sync_flag.txt — si contiene '1', hay actualización.
-;               Incluye un Sleep para no saturar el CPU en el loop de polling.
-;
-; Parámetros  : Ninguno
-; Retorna     : AL = 1 si hay actualización, 0 si no
+; Sync_VerificarActualizacion
 ; ===========================================================================
 Sync_VerificarActualizacion PROC
     push ebx
     push ecx
     push edx
 
-    ; Esperar un intervalo antes de verificar (evitar busy-wait)
     INVOKE Sleep, POLL_INTERVAL_MS
 
-    ; Leer bandera
     call Archivo_LeerBandera
     cmp  al, '1'
     jne  VerificarAct_No
@@ -389,106 +386,18 @@ Sync_VerificarActualizacion ENDP
 
 
 ; ===========================================================================
-;           PROCEDIMIENTOS INTERNOS — Gestión de Procesos Win32
-; ===========================================================================
-
-; ===========================================================================
-; Sync_LanzarProceso — Lanza un comando como proceso hijo y espera
-;                       a que termine (bloqueante).
-;
-; Parámetros: EDX = puntero al comando (ej: "python sync_service.py upload")
-; Retorna   : AL = 1 si el proceso se ejecutó correctamente, 0 si error
+; Sync_LanzarProceso — Lanza comando (en EDX) como proceso hijo, espera.
 ; ===========================================================================
 Sync_LanzarProceso PROC
     push ebx
     push ecx
     push edx
     push esi
-    push edi                   ; FIX: preservar EDI (usado por rep stosb)
-
-    mov  esi, edx              ; ESI = comando
-
-    ; --- Inicializar STARTUPINFO ---
-    ; Limpiar estructura a ceros
-    lea  edi, si
-    mov  ecx, SIZEOF STARTUPINFO
-    xor  al, al
     push edi
-    rep  stosb
-    pop  edi
 
-    ; Configurar campos necesarios
-    mov  si.cb, SIZEOF STARTUPINFO
-    mov  si.dwFlags, STARTF_USESHOWWINDOW
-    mov  si.wShowWindow, SW_HIDE   ; ocultar ventana del proceso
+    mov  esi, edx
 
-    ; --- Inicializar PROCESS_INFORMATION a ceros ---
-    lea  edi, pi
-    mov  ecx, SIZEOF PROCESS_INFORMATION
-    xor  al, al
-    push edi
-    rep  stosb
-    pop  edi
-
-    ; --- Crear proceso ---
-    INVOKE CreateProcessA,
-        NULL,                  ; lpApplicationName (NULL = usar cmdLine)
-        esi,                   ; lpCommandLine
-        NULL,                  ; lpProcessAttributes
-        NULL,                  ; lpThreadAttributes
-        0,                     ; bInheritHandles = FALSE
-        NORMAL_PRIORITY,       ; dwCreationFlags
-        NULL,                  ; lpEnvironment (heredar)
-        NULL,                  ; lpCurrentDirectory (heredar)
-        ADDR si,               ; lpStartupInfo
-        ADDR pi                ; lpProcessInformation
-
-    cmp  eax, 0
-    je   LanzarProc_Error
-
-    ; --- Esperar a que el proceso termine ---
-    INVOKE WaitForSingleObject,
-        pi.hProcess,
-        PROCESS_TIMEOUT_MS
-
-    ; --- Cerrar handles ---
-    INVOKE CloseHandle, pi.hThread
-    INVOKE CloseHandle, pi.hProcess
-
-    mov  al, 1
-    jmp  LanzarProc_Fin
-
-LanzarProc_Error:
-    mov  al, 0
-
-LanzarProc_Fin:
-    pop  edi                   ; FIX: restaurar EDI
-    pop  esi
-    pop  edx
-    pop  ecx
-    pop  ebx
-    ret
-Sync_LanzarProceso ENDP
-
-
-; ===========================================================================
-; Sync_LanzarListener — Lanza "python sync_service.py listen" en background.
-;                        NO espera a que termine (el listener corre
-;                        indefinidamente haciendo polling a Firebase).
-;                        Guarda el handle del proceso para poder cerrarlo
-;                        cuando la partida termine.
-;
-; Parámetros: Ninguno
-; Retorna   : AL = 1 si éxito, 0 si error
-; ===========================================================================
-Sync_LanzarListener PROC
-    push ebx
-    push ecx
-    push edx
-    push esi
-    push edi                   ; FIX: preservar EDI
-
-    ; --- Inicializar STARTUPINFO ---
+    ; Limpiar STARTUPINFO
     lea  edi, si
     mov  ecx, SIZEOF STARTUPINFO
     xor  al, al
@@ -500,7 +409,7 @@ Sync_LanzarListener PROC
     mov  si.dwFlags, STARTF_USESHOWWINDOW
     mov  si.wShowWindow, SW_HIDE
 
-    ; --- Inicializar PROCESS_INFORMATION ---
+    ; Limpiar PROCESS_INFORMATION
     lea  edi, pi
     mov  ecx, SIZEOF PROCESS_INFORMATION
     xor  al, al
@@ -508,27 +417,78 @@ Sync_LanzarListener PROC
     rep  stosb
     pop  edi
 
-    ; --- Crear proceso listener ---
     INVOKE CreateProcessA,
-        NULL,
-        ADDR cmdListen,
-        NULL,
-        NULL,
-        0,
-        NORMAL_PRIORITY,
-        NULL,
-        NULL,
-        ADDR si,
-        ADDR pi
+        NULL, esi, NULL, NULL, 0,
+        NORMAL_PRIORITY, NULL, NULL,
+        ADDR si, ADDR pi
+
+    cmp  eax, 0
+    je   LanzarProc_Error
+
+    INVOKE WaitForSingleObject, pi.hProcess, PROCESS_TIMEOUT_MS
+    INVOKE CloseHandle, pi.hThread
+    INVOKE CloseHandle, pi.hProcess
+
+    mov  al, 1
+    jmp  LanzarProc_Fin
+
+LanzarProc_Error:
+    mov  al, 0
+
+LanzarProc_Fin:
+    pop  edi
+    pop  esi
+    pop  edx
+    pop  ecx
+    pop  ebx
+    ret
+Sync_LanzarProceso ENDP
+
+
+; ===========================================================================
+; Sync_LanzarListener — Lanza "python ... listen a/b" en background.
+; ===========================================================================
+Sync_LanzarListener PROC
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; Construir comando: "python ... listen a"
+    lea  esi, sufListen
+    call Sync_ConstruirComando
+
+    ; Limpiar STARTUPINFO
+    lea  edi, si
+    mov  ecx, SIZEOF STARTUPINFO
+    xor  al, al
+    push edi
+    rep  stosb
+    pop  edi
+
+    mov  si.cb, SIZEOF STARTUPINFO
+    mov  si.dwFlags, STARTF_USESHOWWINDOW
+    mov  si.wShowWindow, SW_HIDE
+
+    ; Limpiar PROCESS_INFORMATION
+    lea  edi, pi
+    mov  ecx, SIZEOF PROCESS_INFORMATION
+    xor  al, al
+    push edi
+    rep  stosb
+    pop  edi
+
+    INVOKE CreateProcessA,
+        NULL, ADDR cmdBuffer, NULL, NULL, 0,
+        NORMAL_PRIORITY, NULL, NULL,
+        ADDR si, ADDR pi
 
     cmp  eax, 0
     je   LanzarListen_Error
 
-    ; Guardar handle del proceso (NO cerrarlo, lo necesitamos vivo)
     mov  eax, pi.hProcess
     mov  listenProcHandle, eax
-
-    ; Cerrar handle del hilo (no lo necesitamos)
     INVOKE CloseHandle, pi.hThread
 
     mov  al, 1
@@ -538,7 +498,7 @@ LanzarListen_Error:
     mov  al, 0
 
 LanzarListen_Fin:
-    pop  edi                   ; FIX: restaurar EDI
+    pop  edi
     pop  esi
     pop  edx
     pop  ecx

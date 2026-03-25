@@ -404,6 +404,7 @@ Sync_LanzarProceso PROC
     push ecx
     push edx
     push esi
+    push edi                   ; FIX: preservar EDI (usado por rep stosb)
 
     mov  esi, edx              ; ESI = comando
 
@@ -461,6 +462,7 @@ LanzarProc_Error:
     mov  al, 0
 
 LanzarProc_Fin:
+    pop  edi                   ; FIX: restaurar EDI
     pop  esi
     pop  edx
     pop  ecx
@@ -484,6 +486,7 @@ Sync_LanzarListener PROC
     push ecx
     push edx
     push esi
+    push edi                   ; FIX: preservar EDI
 
     ; --- Inicializar STARTUPINFO ---
     lea  edi, si
@@ -535,6 +538,7 @@ LanzarListen_Error:
     mov  al, 0
 
 LanzarListen_Fin:
+    pop  edi                   ; FIX: restaurar EDI
     pop  esi
     pop  edx
     pop  ecx

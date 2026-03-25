@@ -1,5 +1,13 @@
 ; ===========================================================================
 ; main.asm - Punto de Entrada y Coordinador General del Programa
+;
+; CAMBIOS DE INTEGRACIÓN:
+;   - Agregados PROTO de file_manager.asm
+;   - Se llama Archivo_ActualizarLastMove antes de Sync_RegistrarMovimiento
+;   - Se llama Archivo_InicializarEstado al inicio de TODA partida (no solo online)
+;   - Principal_EsperarRivalSiCorresponde copia syncLastMove a bufferMovUCI
+;     antes de llamar Principal_ParsearUCI
+;   - Se llama Archivo_EscribirEstado al finalizar partida (persistir estado)
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -15,7 +23,9 @@ MODO_VS_IA          EQU 1
 MODO_LOCAL          EQU 2
 MAX_PISTAS          EQU 3
 
+; -----------------------------------------------------------------------
 ; board.asm
+; -----------------------------------------------------------------------
 Tablero_Inicializar              PROTO
 Tablero_ObtenerTurno             PROTO
 Tablero_CambiarTurno             PROTO
@@ -28,13 +38,17 @@ Tablero_ObtenerPosRey            PROTO
 Tablero_UCIAIndice               PROTO
 Tablero_ObtenerContadorMovimientos PROTO
 
+; -----------------------------------------------------------------------
 ; move_validator.asm
+; -----------------------------------------------------------------------
 Validar_Movimiento               PROTO
 Verificar_ReyEnJaque             PROTO
 Verificar_JaqueMate              PROTO
 Verificar_Tablas                 PROTO
 
+; -----------------------------------------------------------------------
 ; ui_console.asm
+; -----------------------------------------------------------------------
 UI_MostrarTablero                PROTO
 UI_MostrarMenuPrincipal          PROTO
 UI_MostrarTurno                  PROTO
@@ -49,23 +63,56 @@ UI_MostrarPistasAgotadas         PROTO
 UI_ActualizarReloj               PROTO
 UI_LimpiarPantalla               PROTO
 
+; -----------------------------------------------------------------------
 ; input_handler.asm
+; -----------------------------------------------------------------------
 Entrada_LeerMovimientoUCI        PROTO
 Entrada_LeerOpcionMenu           PROTO
 Entrada_SolicitoPista            PROTO
 
+; -----------------------------------------------------------------------
 ; sync_manager.asm
+; -----------------------------------------------------------------------
 Sync_IniciarSesion               PROTO
 Sync_PublicarEstado              PROTO
 Sync_LeerEstadoRemoto            PROTO
 Sync_RegistrarMovimiento         PROTO
 Sync_VerificarActualizacion      PROTO
 
+; -----------------------------------------------------------------------
+; file_manager.asm  (NUEVO — necesarios para integración)
+; -----------------------------------------------------------------------
+Archivo_InicializarEstado        PROTO
+Archivo_EscribirEstado           PROTO
+Archivo_LeerEstado               PROTO
+Archivo_ActualizarLastMove       PROTO
+Archivo_RegistrarMovimiento      PROTO
+Archivo_LeerBandera              PROTO
+Archivo_EscribirBandera          PROTO
+Archivo_LeerPista                PROTO
+Archivo_GenerarFEN               PROTO
+Archivo_IncrementarVersion       PROTO
+
+; -----------------------------------------------------------------------
 ; engine_connector.asm
+; -----------------------------------------------------------------------
 Motor_SolicitarJugada            PROTO
 Motor_SolicitarPista             PROTO
 Motor_ObtenerMejorMovimiento     PROTO
 
+; -----------------------------------------------------------------------
+; Variables externas de sync_manager.asm
+; -----------------------------------------------------------------------
+EXTERNDEF syncLastMove : BYTE
+
+; -----------------------------------------------------------------------
+; Variables externas de input_handler.asm
+; -----------------------------------------------------------------------
+EXTERNDEF necesitaRedibujo : BYTE
+
+; ===========================================================================
+;                       SEGMENTO DE DATOS
+; ===========================================================================
 .data
 
 modoJuego           BYTE MODO_LOCAL
@@ -95,6 +142,9 @@ msgFinPartida       BYTE "  Partida finalizada. Gracias por jugar.",0Dh,0Ah,0
 msgSincronizando    BYTE "  [~] Sincronizando con servidor...",0Dh,0Ah,0
 msgEsperandoRival   BYTE "  [~] Esperando movimiento del rival...",0Dh,0Ah,0
 
+; ===========================================================================
+;                       SEGMENTO DE CÓDIGO
+; ===========================================================================
 .code
 
 main PROC
@@ -141,6 +191,7 @@ Principal_Salir:
 main ENDP
 
 
+; ===========================================================================
 Principal_MostrarBienvenida PROC
     push eax
     call UI_LimpiarPantalla
@@ -153,6 +204,7 @@ Principal_MostrarBienvenida PROC
 Principal_MostrarBienvenida ENDP
 
 
+; ===========================================================================
 Principal_IniciarPartida PROC
     push ebp
     mov  ebp, esp
@@ -160,18 +212,27 @@ Principal_IniciarPartida PROC
     push ebx
 
     call Tablero_Inicializar
+    call Archivo_InicializarEstado     ; FIX: inicializar estado de archivo
+                                        ;      en TODOS los modos, no solo online
     mov  pistasUsadas,           0
     mov  partidaActiva,          1
     mov  actualizacionPendiente, 0
 
     cmp  modoJuego, MODO_EN_LINEA
-    jne  IniciarPartida_SkipSync
+    jne  IniciarPartida_NoOnline
+
+    ; --- Modo online: sincronizar ---
     mov  edx, OFFSET msgSincronizando
     call WriteString
     call Sync_IniciarSesion
     call Sync_PublicarEstado
+    jmp  IniciarPartida_Jugar
 
-IniciarPartida_SkipSync:
+IniciarPartida_NoOnline:
+    ; Escribir game_state.json inicial (para modos local y vs IA también)
+    call Archivo_EscribirEstado
+
+IniciarPartida_Jugar:
     call Principal_BucleJuego
 
     pop  ebx
@@ -181,6 +242,7 @@ IniciarPartida_SkipSync:
 Principal_IniciarPartida ENDP
 
 
+; ===========================================================================
 Principal_BucleJuego PROC
     push ebp
     mov  ebp, esp
@@ -192,6 +254,12 @@ Bucle_Inicio:
     call Tablero_ObtenerEstado
     cmp  al, ESTADO_EN_CURSO
     jne  Bucle_FinPartida
+
+    ; FIX: verificar si input_handler pidió redibujo (toggle de estilo)
+    cmp  necesitaRedibujo, 0
+    je   Bucle_SkipRedibujo
+    mov  necesitaRedibujo, 0
+Bucle_SkipRedibujo:
 
     call UI_LimpiarPantalla
     call UI_MostrarTablero
@@ -205,6 +273,7 @@ Bucle_Inicio:
     call UI_MostrarJaque
 
 Bucle_SinJaque:
+    ; --- Modo online: esperar rival si corresponde ---
     cmp  modoJuego, MODO_EN_LINEA
     jne  Bucle_EscogerFuente
     call Principal_EsperarRivalSiCorresponde
@@ -212,6 +281,7 @@ Bucle_SinJaque:
     je   Bucle_PostMovimiento
 
 Bucle_EscogerFuente:
+    ; --- Modo vs IA: turno de la máquina ---
     call Tablero_ObtenerTurno
     cmp  al, COLOR_NEGRO
     jne  Bucle_TurnoHumano
@@ -221,6 +291,7 @@ Bucle_EscogerFuente:
     jmp  Bucle_PostMovimiento
 
 Bucle_TurnoHumano:
+    ; --- Verificar si usuario pidió pista (tecla 'h') ---
     call Entrada_SolicitoPista
     cmp  al, 1
     jne  Bucle_LeerMovimiento
@@ -233,20 +304,28 @@ Bucle_LeerMovimiento:
     cmp  al, 0
     je   Bucle_Inicio
 
+    ; --- Parsear entrada UCI ---
     call Principal_ParsearUCI
     cmp  al, 0
     je   Bucle_MovimientoIlegal
 
+    ; --- Validar movimiento ---
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   Bucle_MovimientoIlegal
 
+    ; --- Ejecutar movimiento ---
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
+
+    ; FIX: Actualizar lastMove ANTES de registrar
+    mov  edx, OFFSET bufferMovUCI
+    call Archivo_ActualizarLastMove
     call Sync_RegistrarMovimiento
+
     jmp  Bucle_PostMovimiento
 
 Bucle_MovimientoIlegal:
@@ -257,8 +336,7 @@ Bucle_MovimientoIlegal:
 Bucle_PostMovimiento:
     call UI_ActualizarReloj
 
-    ; FIX: cambiar turno PRIMERO, luego verificar jaque/mate/tablas
-    ; asi Verificar_JaqueMate y Verificar_Tablas evaluan al rival
+    ; Cambiar turno PRIMERO, luego verificar jaque/mate/tablas
     call Tablero_CambiarTurno
 
     ; Detectar jaque al rey del jugador que acaba de recibir el turno
@@ -275,8 +353,7 @@ Bucle_PostMovimiento:
     ; Hay jaque: establecer bandera
     call Tablero_ObtenerTurno
     movzx eax, al
-    inc  eax
-    movzx eax, al
+    inc  eax                        ; 1 = jaque a blancas, 2 = jaque a negras
     call Tablero_EstablecerJaque
 
     ; Verificar jaque mate
@@ -288,7 +365,7 @@ Bucle_PostMovimiento:
     ; Jaque mate: quien acaba de mover gana
     call Tablero_ObtenerTurno
     cmp  al, COLOR_BLANCO
-    je   Bucle_GananNegras          ; si turno actual es blancas, negras dieron mate
+    je   Bucle_GananNegras
 
     mov  al, ESTADO_GANA_NEGRAS
     jmp  Bucle_SetMate
@@ -314,6 +391,9 @@ Bucle_SinJaquePost:
     call UI_MostrarTablas
 
 Bucle_SincronizarFin:
+    ; Escribir estado actualizado a disco (todos los modos)
+    call Archivo_EscribirEstado
+
     cmp  modoJuego, MODO_EN_LINEA
     jne  Bucle_Inicio
     call Sync_PublicarEstado
@@ -331,6 +411,9 @@ Bucle_FinPartida:
 Principal_BucleJuego ENDP
 
 
+; ===========================================================================
+; Principal_ParsearUCI — Convierte bufferMovUCI (4 chars) a índices de tablero
+; ===========================================================================
 Principal_ParsearUCI PROC
     push ebx
     push ecx
@@ -386,22 +469,36 @@ ParsearUCI_Fin:
 Principal_ParsearUCI ENDP
 
 
+; ===========================================================================
+; Principal_TurnoIA — La IA hace su movimiento
+; ===========================================================================
 Principal_TurnoIA PROC
     push eax
     push ebx
+
     call Motor_SolicitarJugada
+
+    ; Motor_SolicitarJugada debe dejar el movimiento UCI en bufferMovUCI
+    ; (esto lo implementará engine_connector.asm completo)
     call Principal_ParsearUCI
     cmp  al, 0
     je   TurnoIA_Fin
+
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   TurnoIA_Fin
+
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
+
+    ; FIX: Actualizar lastMove antes de registrar
+    mov  edx, OFFSET bufferMovUCI
+    call Archivo_ActualizarLastMove
     call Sync_RegistrarMovimiento
+
 TurnoIA_Fin:
     pop  ebx
     pop  eax
@@ -409,58 +506,109 @@ TurnoIA_Fin:
 Principal_TurnoIA ENDP
 
 
+; ===========================================================================
+; Principal_ManejarPista — Solicita y muestra una pista al jugador
+; ===========================================================================
 Principal_ManejarPista PROC
     push eax
+
     movzx eax, pistasUsadas
     cmp  eax, MAX_PISTAS
     jae  Pista_Agotadas
+
     call Motor_SolicitarPista
     call Motor_ObtenerMejorMovimiento
     call UI_MostrarPista
     inc  pistasUsadas
     jmp  Pista_Fin
+
 Pista_Agotadas:
     call UI_MostrarPistasAgotadas
+
 Pista_Fin:
     pop  eax
     ret
 Principal_ManejarPista ENDP
 
 
+; ===========================================================================
+; Principal_EsperarRivalSiCorresponde
+;   En modo online, si es turno del rival, hace polling hasta recibir
+;   el movimiento remoto. Luego lo ejecuta localmente.
+;
+; Retorna: AL = 1 si se ejecutó movimiento del rival, 0 si es turno local
+;
+; FIX: Ahora copia syncLastMove → bufferMovUCI antes de parsear,
+;      porque Principal_ParsearUCI lee de bufferMovUCI.
+; ===========================================================================
 Principal_EsperarRivalSiCorresponde PROC
     push ebx
     push ecx
+    push esi
+    push edi
+
     call Tablero_ObtenerTurno
     cmp  al, COLOR_NEGRO
     jne  Esperar_EsTurnoLocal
+
     call UI_LimpiarPantalla
     call UI_MostrarTablero
     mov  edx, OFFSET msgEsperandoRival
     call WriteString
+
 Esperar_PollLoop:
     call Sync_VerificarActualizacion
     cmp  al, 1
     jne  Esperar_PollLoop
+
+    ; Hay actualización: leer estado remoto
     call Sync_LeerEstadoRemoto
+
+    ; FIX: Copiar syncLastMove → bufferMovUCI para que ParsearUCI funcione
+    lea  esi, syncLastMove
+    lea  edi, bufferMovUCI
+    mov  al, [esi+0]
+    mov  [edi+0], al
+    mov  al, [esi+1]
+    mov  [edi+1], al
+    mov  al, [esi+2]
+    mov  [edi+2], al
+    mov  al, [esi+3]
+    mov  [edi+3], al
+    mov  BYTE PTR [edi+4], 0
+
+    ; Parsear el movimiento del rival
     call Principal_ParsearUCI
     cmp  al, 0
     je   Esperar_ErrorRemoto
+
+    ; Validar
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   Esperar_ErrorRemoto
+
+    ; Ejecutar
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
+
+    ; Registrar (lastMove ya fue seteado por Sync_LeerEstadoRemoto)
     call Sync_RegistrarMovimiento
+
     mov  al, 1
     jmp  Esperar_Fin
+
 Esperar_ErrorRemoto:
     jmp  Esperar_PollLoop
+
 Esperar_EsTurnoLocal:
     mov  al, 0
+
 Esperar_Fin:
+    pop  edi
+    pop  esi
     pop  ecx
     pop  ebx
     ret

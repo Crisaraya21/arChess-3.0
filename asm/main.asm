@@ -511,28 +511,34 @@ TurnoIA_Fin:
 Principal_TurnoIA ENDP
 
 
-; ===========================================================================
 Principal_ManejarPista PROC
     push eax
 
     movzx eax, pistasUsadas
-    cmp  eax, MAX_PISTAS
-    jae  Pista_Agotadas
+    cmp   eax, MAX_PISTAS
+    jae   Pista_Agotadas
 
-    call Motor_SolicitarPista
-    call Motor_ObtenerMejorMovimiento
-    call UI_MostrarPista
+    ; 1. Pedirle a Python que genere el archivo
+    call Motor_SolicitarPista 
+    mov  eax, 2000            ; Esperar 2 segundos (2000 ms)
+    call Delay
+    ; 2. ¡NUEVO! Leer el archivo que Python acaba de crear
+    ; Esto llena la variable 'archivoPista' (o como se llame tu buffer)
+    call Archivo_LeerPista    
+
+    ; 3. Procesar y mostrar
+    call Motor_ObtenerMejorMovimiento ; (Si esta función solo hace lógica, está bien)
+    call UI_MostrarPista             ; Esto ahora sí va a tener datos que mostrar
+    
     inc  pistasUsadas
     jmp  Pista_Fin
 
 Pista_Agotadas:
     call UI_MostrarPistasAgotadas
-
 Pista_Fin:
     pop  eax
     ret
 Principal_ManejarPista ENDP
-
 
 ; ===========================================================================
 ; Principal_EsperarRivalSiCorresponde

@@ -94,8 +94,8 @@ EXTERNDEF hintBuf : BYTE
 ;                       SEGMENTO DE DATOS
 ; ===========================================================================
 .data
- 
-cmdAIService    BYTE "python services\ai_service.py", 0
+    ; El ..\ es clave porque el script está una carpeta atrás de donde corre el juego
+    cmdAIService BYTE '"C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe" ..\services\ai_service.py', 0
  
 ecStartInf      EC_STARTUPINFO <>
 ecProcInf       EC_PROCESS_INFO <>

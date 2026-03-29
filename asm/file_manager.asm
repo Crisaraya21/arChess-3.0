@@ -107,11 +107,11 @@ PUBLIC archivoPista
 PUBLIC archivoPistaScore
 PUBLIC archivoPistaDepth
 
-; --- Rutas de archivos ---
-rutaEstado      BYTE "data\game_state.json", 0
-rutaMovesLog    BYTE "data\moves.log", 0
-rutaHint        BYTE "data\hint.json", 0
-rutaBandera     BYTE "data\sync_flag.txt", 0
+; --- Rutas de archivos (CORREGIDAS A RUTA ABSOLUTA) ---
+rutaEstado      BYTE "C:\arChess-3.0\data\game_state.json", 0
+rutaMovesLog    BYTE "C:\arChess-3.0\data\moves.log", 0
+rutaHint        BYTE "C:\arChess-3.0\data\hint.json", 0
+rutaBandera      BYTE "C:\arChess-3.0\data\sync_flag.txt", 0
 
 ; --- Buffers para estado del juego (game_state.json) ---
 archivoGameId   BYTE 32 DUP(0)
@@ -590,6 +590,10 @@ Archivo_LeerEstado PROC
     mov  eax, ebx
     lea  edx, bufArchivo
     mov  ecx, 1020
+    mov edi, OFFSET bufArchivo
+    mov ecx, 1024
+    mov al, 0
+    rep stosb    ; Llena el buffer de ceros (nulls)
     call ReadFromFile
     mov  bytesLeidos, eax
 
@@ -669,59 +673,34 @@ Archivo_LeerEstado ENDP
 ; Retorna     : AL = 1 si éxito, 0 si error
 ; ===========================================================================
 Archivo_LeerPista PROC
-    push ebx
-    push ecx
     push edx
-    push esi
-    push edi
-
+    
+    ; --- TEST DE SUPERVIVENCIA ---
     mov  edx, OFFSET rutaHint
     call OpenInputFile
+    call WriteInt
+    mov  ebx, eax           ; Guardamos el handle
+    
     cmp  eax, INVALID_HANDLE
-    je   LeerPista_Error
-
-    mov  ebx, eax
-    lea  edx, bufArchivo
-    mov  ecx, 512
-    mov  eax, ebx
-    call ReadFromFile
-    mov  bytesLeidos, eax
-
-    mov  eax, ebx
-    call CloseFile
-
-    lea  esi, bufArchivo
-    mov  eax, bytesLeidos
-    mov  BYTE PTR [esi + eax], 0
-
-    ; bestMove
-    lea  edx, clave_bestMove
-    lea  edi, archivoPista
-    mov  ecx, 6
-    call Aux_JSON_ExtraerStr
-
-    ; scoreCp (puede ser negativo)
-    lea  edx, clave_scoreCp
-    call Aux_JSON_ExtraerNum
-    mov  archivoPistaScore, eax
-
-    ; depth
-    lea  edx, clave_depth
-    call Aux_JSON_ExtraerNum
-    mov  archivoPistaDepth, eax
-
-    mov  al, 1
+    jne  Abrio_Bien
+    
+    ; SI LLEGA AQUÍ, ES QUE NO ENCUENTRA EL ARCHIVO
+    mov  al, 'X'            ; Imprime una X roja de error
+    call WriteChar
     jmp  LeerPista_Fin
 
-LeerPista_Error:
-    mov  al, 0
+Abrio_Bien:
+    mov  al, 'O'            ; Imprime una O de que sí lo abrió
+    call WriteChar
+    
+    ; ... (Aquí seguís con el ReadFromFile que ya tenías)
+    ; PERO ASEGURATE DE CERRAR EL ARCHIVO AL FINAL
+    mov  eax, ebx
+    call CloseFile
+    ; ------------------------------
 
 LeerPista_Fin:
-    pop  edi
-    pop  esi
     pop  edx
-    pop  ecx
-    pop  ebx
     ret
 Archivo_LeerPista ENDP
 
@@ -964,48 +943,38 @@ Aux_JSON_ExtraerStr PROC
     push esi
 
     lea  esi, bufArchivo
-    call Aux_BuscarSubstr
+    call Aux_BuscarSubstr    ; Busca "bestMove"
     cmp  esi, 0
     je   ExtrStr_No
 
-    ; Buscar ':' después de la clave
-ExtrStr_Dp:
+    ; --- NUEVA LÓGICA: Saltar TODO hasta la comilla de apertura ---
+ExtrStr_Limpiar:
     cmp  BYTE PTR [esi], 0
     je   ExtrStr_No
-    cmp  BYTE PTR [esi], ':'
-    je   ExtrStr_DpOk
-    inc  esi
-    jmp  ExtrStr_Dp
-
-ExtrStr_DpOk:
-    inc  esi
-    ; Buscar '"' de apertura del valor
-ExtrStr_Comilla:
-    cmp  BYTE PTR [esi], 0
-    je   ExtrStr_No
-    cmp  BYTE PTR [esi], '"'
+    cmp  BYTE PTR [esi], '"' ; ¿Es la comilla del valor? (ej: "e2e4")
     je   ExtrStr_Inicio
     inc  esi
-    jmp  ExtrStr_Comilla
+    jmp  ExtrStr_Limpiar
 
 ExtrStr_Inicio:
-    inc  esi                   ; saltar comilla de apertura
+    inc  esi                 ; Saltamos la comilla '"'
 ExtrStr_Copiar:
-    cmp  ecx, 0
-    je   ExtrStr_FinCopia
-    cmp  BYTE PTR [esi], 0
-    je   ExtrStr_FinCopia
-    cmp  BYTE PTR [esi], '"'
-    je   ExtrStr_FinCopia
+    cmp  ecx, 1              ; Dejar espacio para el null
+    jbe  ExtrStr_FinCopia
     mov  al, [esi]
-    mov  [edi], al
+    cmp  al, 0
+    je   ExtrStr_FinCopia
+    cmp  al, '"'             ; ¿Llegamos a la comilla de cierre?
+    je   ExtrStr_FinCopia
+    
+    mov  [edi], al           ; Copiamos el caracter (ej: 'e')
     inc  esi
     inc  edi
     dec  ecx
     jmp  ExtrStr_Copiar
 
 ExtrStr_FinCopia:
-    mov  BYTE PTR [edi], 0
+    mov  BYTE PTR [edi], 0   ; Terminamos el string
     mov  al, 1
     jmp  ExtrStr_Fin
 

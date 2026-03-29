@@ -19,12 +19,14 @@
 ;
 ; Dependencias:
 ;   - board.asm  (board, Tablero_ObtenerPieza, Tablero_ObtenerTurno, etc.)
-;   - Irvine32.inc
+;   - Irvine32.inc (incluye windows.inc con SYSTEMTIME, GetLocalTime,
+;                    CreateFileA, SetFilePointer y constantes Win32)
 ;
-; Funciones Win32 directas:
-;   - CreateFileA   (para append en moves.log)
-;   - SetFilePointer
-;   - GetLocalTime  (para campo updatedAt)
+; CORRECCIÓN:
+;   Se eliminaron las redefiniciones de SYSTEMTIME, GetLocalTime,
+;   CreateFileA, SetFilePointer y constantes Win32 que ya están
+;   incluidas en Irvine32.inc / windows.inc, evitando el error
+;   "conflicting parameter definition" (ml.exe).
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -51,37 +53,34 @@ COLOR_BLACK     EQU 1
 
 BOARD_SIZE      EQU 64
 
-; Constantes Win32
-GENERIC_WRITE       EQU 40000000h
-GENERIC_READ        EQU 80000000h
-FILE_SHARE_READ     EQU 1
-CREATE_ALWAYS       EQU 2
-OPEN_EXISTING       EQU 3
-OPEN_ALWAYS         EQU 4
-FILE_ATTR_NORMAL    EQU 80h
+; ---------------------------------------------------------------------------
+; Constantes Win32 que NO están en windows.inc / Irvine32.inc
+; (Si alguna da "symbol redefinition", simplemente elimínela)
+; ---------------------------------------------------------------------------
 INVALID_HANDLE      EQU -1
-FILE_END            EQU 2
+FILE_END_CONST      EQU 2          ; Renombrado para evitar conflicto con FILE_END
 
-; Prototipos Win32
-CreateFileA     PROTO, lpFileName:PTR BYTE, dwAccess:DWORD,
-                dwShareMode:DWORD, lpSecurity:DWORD,
-                dwCreation:DWORD, dwFlags:DWORD, hTemplate:DWORD
-SetFilePointer  PROTO, hFile:DWORD, lDistLow:SDWORD,
-                lpDistHigh:PTR DWORD, dwMoveMethod:DWORD
-
-; Estructura SYSTEMTIME para GetLocalTime
-SYSTEMTIME STRUCT
-    wYear       WORD ?
-    wMonth      WORD ?
-    wDayOfWeek  WORD ?
-    wDay        WORD ?
-    wHour       WORD ?
-    wMinute     WORD ?
-    wSecond     WORD ?
-    wMilliseconds WORD ?
-SYSTEMTIME ENDS
-
-GetLocalTime PROTO, lpSystemTime:PTR SYSTEMTIME
+; ===========================================================================
+; NOTA IMPORTANTE — Definiciones ELIMINADAS:
+;
+; Las siguientes YA están en Irvine32.inc / windows.inc y causaban
+; el error "conflicting parameter definition":
+;
+;   SYSTEMTIME STRUCT ... ENDS     ← ya en windows.inc
+;   GetLocalTime PROTO             ← ya en windows.inc
+;   CreateFileA PROTO              ← ya en kernel32.inc
+;   SetFilePointer PROTO           ← ya en kernel32.inc
+;   GENERIC_WRITE  EQU ...         ← ya definida
+;   GENERIC_READ   EQU ...         ← ya definida
+;   FILE_SHARE_READ EQU ...        ← ya definida
+;   CREATE_ALWAYS  EQU ...         ← ya definida
+;   OPEN_EXISTING  EQU ...         ← ya definida
+;   OPEN_ALWAYS    EQU ...         ← ya definida
+;   FILE_ATTR_NORMAL EQU ...       ← ya definida
+;   FILE_END       EQU 2           ← renombrada a FILE_END_CONST
+;
+; NO las vuelva a declarar.
+; ===========================================================================
 
 ; ---------------------------------------------------------------------------
 ; Referencias externas (board.asm)
@@ -174,6 +173,7 @@ fenPiezas       BYTE 0               ; 0 = EMPTY
                 BYTE 'k'             ; 12 = BLACK_KING
 
 ; --- SYSTEMTIME para timestamp ---
+; SYSTEMTIME ya está definida en windows.inc (incluido por Irvine32.inc)
 tiempoActual    SYSTEMTIME <>
 
 ; ===========================================================================
@@ -339,17 +339,6 @@ Archivo_GenerarFEN ENDP
 ; ===========================================================================
 ; Procedimiento: Archivo_EscribirEstado
 ; Descripción : Escribe game_state.json con formato JSON válido.
-;
-; Genera:
-;   {
-;     "gameId": "partida_default",
-;     "version": 1,
-;     "turn": "w",
-;     "fen": "rnbqkbnr/pppppppp/8/8/...",
-;     "lastMove": "e2e4",
-;     "updatedAt": "2026-03-23T10:15:00Z",
-;     "status": "ongoing"
-;   }
 ;
 ; Retorna: AL = 1 si éxito, 0 si error
 ; ===========================================================================
@@ -754,20 +743,21 @@ Archivo_RegistrarMovimiento PROC
 
     mov  esi, edx              ; ESI = movimiento UCI
 
-    ; Abrir en modo append
+    ; Abrir en modo append usando CreateFileA (ya definida en windows.inc)
     INVOKE CreateFileA,
         ADDR rutaMovesLog,
         GENERIC_WRITE,
         FILE_SHARE_READ,
         NULL,
         OPEN_ALWAYS,
-        FILE_ATTR_NORMAL,
+        FILE_ATTRIBUTE_NORMAL,
         NULL
-    cmp  eax, INVALID_HANDLE
+    cmp  eax, INVALID_HANDLE_VALUE
     je   RegMov_Fin
     mov  ebx, eax
 
-    INVOKE SetFilePointer, ebx, 0, NULL, FILE_END
+    ; Mover al final del archivo
+    INVOKE SetFilePointer, ebx, 0, NULL, FILE_END_CONST
 
     ; Construir línea en bufJSON (reutilizado como temporal)
     lea  edi, bufJSON
@@ -1318,6 +1308,8 @@ Aux_CRLF ENDP
 
 ; ===========================================================================
 ; Aux_GenerarTimestamp — Genera "YYYY-MM-DDTHH:MM:SSZ" en archivoUpdatedAt
+;
+; Usa GetLocalTime (ya definida en windows.inc via Irvine32.inc)
 ; ===========================================================================
 Aux_GenerarTimestamp PROC
     push eax

@@ -1,74 +1,70 @@
 ; ===========================================================================
-; sync_manager.asm — Módulo Puente MASM ↔ Python (con Subespacios a/b)
+; sync_manager.asm — Modulo Puente MASM <-> Python (con Subespacios a/b)
 ;
-; Sistema de subespacios:
-;   Cada cliente tiene un rol: 'a' o 'b'.
-;   - Cliente A escribe en /cliente_a/ y lee de /cliente_b/
-;   - Cliente B escribe en /cliente_b/ y lee de /cliente_a/
-;   Los comandos Python ahora incluyen el rol:
-;     "python services\sync_service.py upload a"
-;     "python services\sync_service.py listen b"
-;
-; Dependencias:
-;   - file_manager.asm
-;   - Irvine32.inc
-;   - Win32 API: CreateProcessA, WaitForSingleObject, CloseHandle, Sleep
+; CORRECCIONES APLICADAS:
+;   1. Variables "si" y "pi" renombradas a "startInf" y "procInf"
+;      porque "si" es palabra reservada en MASM (registro SI de 16 bits).
+;   2. Estructuras renombradas a STARTUPINFO_S y PROCESS_INFO_S para
+;      evitar conflictos si windows.inc las define parcialmente.
+;   3. Prototipos Win32 declarados con DWORD puro para evitar
+;      "INVOKE argument type mismatch".
+;   4. Constantes renombradas para evitar colisiones con windows.inc.
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
 
 ; ---------------------------------------------------------------------------
-; Constantes Win32
+; Constantes Win32 (nombres unicos para no chocar con includes)
 ; ---------------------------------------------------------------------------
-INFINITE_WAIT       EQU 0FFFFFFFFh
-NORMAL_PRIORITY     EQU 00000020h
-STARTF_USESHOWWINDOW EQU 00000001h
-SW_HIDE             EQU 0
+INFINITE_WAIT           EQU 0FFFFFFFFh
+NORMAL_PRIORITY_CLS     EQU 00000020h
+STARTF_USE_SHOWWINDOW   EQU 00000001h
+SW_HIDE_WIN             EQU 0
 
-POLL_INTERVAL_MS    EQU 1000
-PROCESS_TIMEOUT_MS  EQU 15000
-
-; ---------------------------------------------------------------------------
-; Estructuras Win32
-; ---------------------------------------------------------------------------
-STARTUPINFO STRUCT
-    cb              DWORD ?
-    lpReserved      DWORD ?
-    lpDesktop       DWORD ?
-    lpTitle         DWORD ?
-    dwX             DWORD ?
-    dwY             DWORD ?
-    dwXSize         DWORD ?
-    dwYSize         DWORD ?
-    dwXCountChars   DWORD ?
-    dwYCountChars   DWORD ?
-    dwFillAttribute DWORD ?
-    dwFlags         DWORD ?
-    wShowWindow     WORD  ?
-    cbReserved2     WORD  ?
-    lpReserved2     DWORD ?
-    hStdInput       DWORD ?
-    hStdOutput      DWORD ?
-    hStdError       DWORD ?
-STARTUPINFO ENDS
-
-PROCESS_INFORMATION STRUCT
-    hProcess    DWORD ?
-    hThread     DWORD ?
-    dwProcessId DWORD ?
-    dwThreadId  DWORD ?
-PROCESS_INFORMATION ENDS
+POLL_INTERVAL_MS        EQU 1000
+PROCESS_TIMEOUT_MS      EQU 15000
 
 ; ---------------------------------------------------------------------------
-; Prototipos Win32
+; Estructuras Win32 (nombres propios para evitar conflictos)
+; ---------------------------------------------------------------------------
+STARTUPINFO_S STRUCT
+    sCb              DWORD ?
+    sReserved        DWORD ?
+    sDesktop         DWORD ?
+    sTitle           DWORD ?
+    sDwX             DWORD ?
+    sDwY             DWORD ?
+    sDwXSize         DWORD ?
+    sDwYSize         DWORD ?
+    sDwXCountChars   DWORD ?
+    sDwYCountChars   DWORD ?
+    sDwFillAttr      DWORD ?
+    sDwFlags         DWORD ?
+    sShowWindow      WORD  ?
+    sCbReserved2     WORD  ?
+    sReserved2       DWORD ?
+    sStdInput        DWORD ?
+    sStdOutput       DWORD ?
+    sStdError        DWORD ?
+STARTUPINFO_S ENDS
+
+PROCESS_INFO_S STRUCT
+    piProcess    DWORD ?
+    piThread     DWORD ?
+    piProcessId  DWORD ?
+    piThreadId   DWORD ?
+PROCESS_INFO_S ENDS
+
+; ---------------------------------------------------------------------------
+; Prototipos Win32 (todos los parametros como DWORD para evitar mismatch)
 ; ---------------------------------------------------------------------------
 CreateProcessA PROTO,
-    lpAppName:PTR BYTE, lpCmdLine:PTR BYTE,
+    lpAppName:DWORD, lpCmdLine:DWORD,
     lpProcAttr:DWORD, lpThreadAttr:DWORD,
     bInheritHandles:DWORD, dwCreationFlags:DWORD,
     lpEnvironment:DWORD, lpCurrentDir:DWORD,
-    lpStartupInfo:PTR STARTUPINFO,
-    lpProcInfo:PTR PROCESS_INFORMATION
+    lpStartupInfo:DWORD,
+    lpProcInfo:DWORD
 
 WaitForSingleObject PROTO, hHandle:DWORD, dwMilliseconds:DWORD
 CloseHandle PROTO, hObject:DWORD
@@ -103,29 +99,26 @@ Tablero_ObtenerContadorMovimientos PROTO
 ; ===========================================================================
 .data
 
-; --- Plantillas de comandos (sin rol, se completan en runtime) ---
-; El formato final será: "python services\sync_service.py upload a\0"
-; Usamos buffers de 64 bytes para construir el comando completo.
-
+; --- Plantillas de comandos ---
 cmdBase         BYTE "python services\sync_service.py ", 0
 
-; Sufijos de comando (se concatenan después del base + comando + espacio + rol)
+; Sufijos de comando
 sufUpload       BYTE "upload ", 0
 sufDownload     BYTE "download ", 0
 sufListen       BYTE "listen ", 0
 
-; Buffer donde se construye el comando completo antes de lanzar
+; Buffer donde se construye el comando completo
 cmdBuffer       BYTE 80 DUP(0)
 
-; --- Estructuras Win32 ---
-si              STARTUPINFO <>
-pi              PROCESS_INFORMATION <>
+; --- Estructuras Win32 (nombres que NO son palabras reservadas) ---
+startInf        STARTUPINFO_S <>
+procInf         PROCESS_INFO_S <>
 
 ; --- Rol del cliente: 'a' o 'b' (seteado por main.asm) ---
 PUBLIC syncRolCliente
-syncRolCliente  BYTE 'a'           ; por defecto 'a', main.asm lo cambia
+syncRolCliente  BYTE 'a'
 
-; --- Buffer para último movimiento UCI (compartido con main) ---
+; --- Buffer para ultimo movimiento UCI (compartido con main) ---
 PUBLIC syncLastMove
 syncLastMove    BYTE 8 DUP(0)
 
@@ -138,7 +131,7 @@ msgSyncOk       BYTE "  [SYNC] Sincronizacion exitosa.", 0Dh, 0Ah, 0
 msgSyncErr      BYTE "  [SYNC] Error de sincronizacion.", 0Dh, 0Ah, 0
 
 ; ===========================================================================
-;                       SEGMENTO DE CÓDIGO
+;                       SEGMENTO DE CODIGO
 ; ===========================================================================
 .code
 
@@ -151,23 +144,17 @@ PUBLIC Sync_VerificarActualizacion
 
 ; ===========================================================================
 ; Sync_ConstruirComando — Construye el comando completo en cmdBuffer.
-;
-; Formato: "python services\sync_service.py <sufijo><rol>\0"
-;
-; Parámetros: ESI = puntero al sufijo (ej: "upload ", "listen ")
-; Usa:        syncRolCliente para agregar 'a' o 'b' al final
-; Resultado:  cmdBuffer contiene el comando listo para CreateProcessA
+; Parametros: ESI = puntero al sufijo (ej: "upload ", "listen ")
 ; ===========================================================================
 Sync_ConstruirComando PROC
     push eax
     push esi
     push edi
 
-    ; Destino: cmdBuffer
     lea  edi, cmdBuffer
 
-    ; Copiar base: "python services\sync_service.py "
-    push esi                   ; guardar sufijo
+    ; Copiar base
+    push esi
     lea  esi, cmdBase
 Cmd_CopiarBase:
     mov  al, [esi]
@@ -178,9 +165,9 @@ Cmd_CopiarBase:
     inc  edi
     jmp  Cmd_CopiarBase
 Cmd_BaseDone:
-    pop  esi                   ; restaurar sufijo
+    pop  esi
 
-    ; Copiar sufijo: "upload " o "listen " etc.
+    ; Copiar sufijo
 Cmd_CopiarSufijo:
     mov  al, [esi]
     cmp  al, 0
@@ -207,6 +194,39 @@ Sync_ConstruirComando ENDP
 
 
 ; ===========================================================================
+; Sync_PrepararEstructuras — Limpia startInf y procInf, configura para
+;                             ocultar la ventana del proceso hijo.
+; ===========================================================================
+Sync_PrepararEstructuras PROC
+    push eax
+    push ecx
+    push edi
+
+    ; Limpiar STARTUPINFO_S con ceros
+    lea  edi, startInf
+    mov  ecx, SIZEOF STARTUPINFO_S
+    xor  al, al
+    rep  stosb
+
+    ; Configurar campos
+    mov  startInf.sCb, SIZEOF STARTUPINFO_S
+    mov  startInf.sDwFlags, STARTF_USE_SHOWWINDOW
+    mov  startInf.sShowWindow, SW_HIDE_WIN
+
+    ; Limpiar PROCESS_INFO_S con ceros
+    lea  edi, procInf
+    mov  ecx, SIZEOF PROCESS_INFO_S
+    xor  al, al
+    rep  stosb
+
+    pop  edi
+    pop  ecx
+    pop  eax
+    ret
+Sync_PrepararEstructuras ENDP
+
+
+; ===========================================================================
 ; Sync_IniciarSesion
 ; ===========================================================================
 Sync_IniciarSesion PROC
@@ -216,17 +236,15 @@ Sync_IniciarSesion PROC
 
     mov  syncActiva, 1
 
-    ; Inicializar estado de la partida
     call Archivo_InicializarEstado
     call Archivo_EscribirEstado
     cmp  al, 0
     je   IniciarSesion_Error
 
-    ; Limpiar bandera
     mov  al, '0'
     call Archivo_EscribirBandera
 
-    ; Subir estado inicial: "python ... upload a" (o b)
+    ; Subir estado inicial
     lea  esi, sufUpload
     call Sync_ConstruirComando
     lea  edx, cmdBuffer
@@ -234,7 +252,7 @@ Sync_IniciarSesion PROC
     cmp  al, 0
     je   IniciarSesion_Error
 
-    ; Lanzar listener en background: "python ... listen a" (o b)
+    ; Lanzar listener en background
     call Sync_LanzarListener
 
     mov  al, 1
@@ -267,7 +285,6 @@ Sync_PublicarEstado PROC
     cmp  al, 0
     je   PublicarEst_Error
 
-    ; Construir y lanzar: "python ... upload a"
     lea  esi, sufUpload
     call Sync_ConstruirComando
     lea  edx, cmdBuffer
@@ -303,7 +320,6 @@ Sync_LeerEstadoRemoto PROC
     push esi
     push edi
 
-    ; Leer game_state.json (ya actualizado por el listener)
     call Archivo_LeerEstado
     cmp  al, 0
     je   LeerRemoto_Error
@@ -321,7 +337,6 @@ Sync_LeerEstadoRemoto PROC
     mov  [edi+3], al
     mov  BYTE PTR [edi+4], 0
 
-    ; Limpiar bandera
     mov  al, '0'
     call Archivo_EscribirBandera
 
@@ -386,7 +401,8 @@ Sync_VerificarActualizacion ENDP
 
 
 ; ===========================================================================
-; Sync_LanzarProceso — Lanza comando (en EDX) como proceso hijo, espera.
+; Sync_LanzarProceso — Lanza comando (en EDX) como proceso hijo y espera.
+; Retorna: AL = 1 exito, 0 error
 ; ===========================================================================
 Sync_LanzarProceso PROC
     push ebx
@@ -397,37 +413,24 @@ Sync_LanzarProceso PROC
 
     mov  esi, edx
 
-    ; Limpiar STARTUPINFO
-    lea  edi, si
-    mov  ecx, SIZEOF STARTUPINFO
-    xor  al, al
-    push edi
-    rep  stosb
-    pop  edi
+    ; Preparar estructuras Win32
+    call Sync_PrepararEstructuras
 
-    mov  si.cb, SIZEOF STARTUPINFO
-    mov  si.dwFlags, STARTF_USESHOWWINDOW
-    mov  si.wShowWindow, SW_HIDE
-
-    ; Limpiar PROCESS_INFORMATION
-    lea  edi, pi
-    mov  ecx, SIZEOF PROCESS_INFORMATION
-    xor  al, al
-    push edi
-    rep  stosb
-    pop  edi
-
+    ; Crear proceso hijo
     INVOKE CreateProcessA,
         NULL, esi, NULL, NULL, 0,
-        NORMAL_PRIORITY, NULL, NULL,
-        ADDR si, ADDR pi
+        NORMAL_PRIORITY_CLS, NULL, NULL,
+        ADDR startInf, ADDR procInf
 
     cmp  eax, 0
     je   LanzarProc_Error
 
-    INVOKE WaitForSingleObject, pi.hProcess, PROCESS_TIMEOUT_MS
-    INVOKE CloseHandle, pi.hThread
-    INVOKE CloseHandle, pi.hProcess
+    ; Esperar a que termine
+    INVOKE WaitForSingleObject, procInf.piProcess, PROCESS_TIMEOUT_MS
+
+    ; Cerrar handles
+    INVOKE CloseHandle, procInf.piThread
+    INVOKE CloseHandle, procInf.piProcess
 
     mov  al, 1
     jmp  LanzarProc_Fin
@@ -447,6 +450,7 @@ Sync_LanzarProceso ENDP
 
 ; ===========================================================================
 ; Sync_LanzarListener — Lanza "python ... listen a/b" en background.
+; Retorna: AL = 1 exito, 0 error
 ; ===========================================================================
 Sync_LanzarListener PROC
     push ebx
@@ -459,37 +463,24 @@ Sync_LanzarListener PROC
     lea  esi, sufListen
     call Sync_ConstruirComando
 
-    ; Limpiar STARTUPINFO
-    lea  edi, si
-    mov  ecx, SIZEOF STARTUPINFO
-    xor  al, al
-    push edi
-    rep  stosb
-    pop  edi
+    ; Preparar estructuras Win32
+    call Sync_PrepararEstructuras
 
-    mov  si.cb, SIZEOF STARTUPINFO
-    mov  si.dwFlags, STARTF_USESHOWWINDOW
-    mov  si.wShowWindow, SW_HIDE
-
-    ; Limpiar PROCESS_INFORMATION
-    lea  edi, pi
-    mov  ecx, SIZEOF PROCESS_INFORMATION
-    xor  al, al
-    push edi
-    rep  stosb
-    pop  edi
-
+    ; Crear proceso en background (NO esperamos)
     INVOKE CreateProcessA,
         NULL, ADDR cmdBuffer, NULL, NULL, 0,
-        NORMAL_PRIORITY, NULL, NULL,
-        ADDR si, ADDR pi
+        NORMAL_PRIORITY_CLS, NULL, NULL,
+        ADDR startInf, ADDR procInf
 
     cmp  eax, 0
     je   LanzarListen_Error
 
-    mov  eax, pi.hProcess
+    ; Guardar handle del proceso
+    mov  eax, procInf.piProcess
     mov  listenProcHandle, eax
-    INVOKE CloseHandle, pi.hThread
+
+    ; Cerrar handle del thread (no lo necesitamos)
+    INVOKE CloseHandle, procInf.piThread
 
     mov  al, 1
     jmp  LanzarListen_Fin

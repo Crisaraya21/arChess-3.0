@@ -1,12 +1,6 @@
 ; ===========================================================
 ;  ui_console.asm  -  arChess 3.0
-;  TEMA OSCURO: fondo negro + casillas verdes estilo clasico
-;    Casilla oscura : verde oscuro (2) bg + blanco (15) = 0x2F
-;    Casilla clara  : verde brillante (10) bg + negro (0) = 0xA0
-;    Piezas blancas : amarillo (14)
-;    Piezas negras  : cyan (11)
-;    Fondo general  : negro (0) + gris (7) = 7
-;    Info/borders   : verde brillante (10)
+;  CAMBIO: PUBLIC hintBuf (para engine_connector.asm)
 ; ===========================================================
 
 INCLUDE Irvine32.inc
@@ -24,21 +18,17 @@ CLR_INFO_LIGHT       EQU 3
 CLR_HINT_LIGHT       EQU 2
 CLR_CHECK_LIGHT      EQU 4
 
-; Colores MODO OSCURO verde clasico, fondo negro
-; verde oscuro (2)*16 + blanco (15) = 0x2F
-; verde brillante (10)*16 + negro (0) = 0xA0
-; negro (0)*16 + amarillo (14) = 0x0E  piezas blancas
-; negro (0)*16 + cyan (11) = 0x0B     piezas negras
-CLR_DARK_RESET       EQU 07h    ; negro bg + gris (fondo limpio)
-CLR_DARK_BLACK_SQ    EQU 02Fh   ; verde oscuro bg + blanco
-CLR_DARK_WHITE_SQ    EQU 0A0h   ; verde brillante bg + negro
-CLR_DARK_PB_OS       EQU 02Fh   ; verde oscuro bg + blanco
-CLR_DARK_PB_CL       EQU 0AFh   ; verde brillante bg + blanco
-CLR_DARK_PN_OS       EQU 02Fh   ; verde oscuro bg + blanco
-CLR_DARK_PN_CL       EQU 0A0h   ; verde brillante bg + negro (contraste en casilla clara)
-CLR_DARK_INFO        EQU 0Ah    ; negro bg + verde brillante
-CLR_DARK_HINT        EQU 0Ah    ; negro bg + verde brillante
-CLR_DARK_CHECK       EQU 0Ch    ; negro bg + rojo brillante
+; Colores MODO OSCURO
+CLR_DARK_RESET       EQU 07h
+CLR_DARK_BLACK_SQ    EQU 02Fh
+CLR_DARK_WHITE_SQ    EQU 0A0h
+CLR_DARK_PB_OS       EQU 02Fh
+CLR_DARK_PB_CL       EQU 0AFh
+CLR_DARK_PN_OS       EQU 02Fh
+CLR_DARK_PN_CL       EQU 0A0h
+CLR_DARK_INFO        EQU 0Ah
+CLR_DARK_HINT        EQU 0Ah
+CLR_DARK_CHECK       EQU 0Ch
 
 BOARD_COL            EQU 2
 BOARD_ROW            EQU 1
@@ -97,6 +87,8 @@ strNoHints       BYTE "  Sin pistas.   ",0
 
 clockSeconds     DWORD 300
 clockBuf         BYTE "00:00",0,0
+
+PUBLIC hintBuf
 hintBuf          BYTE "----",0
 
 tabFila          DWORD 0

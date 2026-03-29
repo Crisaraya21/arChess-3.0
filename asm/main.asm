@@ -2,9 +2,9 @@
 ; main.asm - Punto de Entrada y Coordinador General
 ;
 ; CAMBIOS:
+;   - PUBLIC bufferMovUCI (para engine_connector.asm)
 ;   - Al elegir modo online, pregunta si es Cliente A o Cliente B
-;   - Setea syncRolCliente ('a' o 'b') en sync_manager.asm
-;   - Integración completa con file_manager.asm
+;   - Integracion completa con file_manager.asm
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -93,7 +93,10 @@ EXTERNDEF necesitaRedibujo : BYTE
 
 modoJuego           BYTE MODO_LOCAL
 turnoIA             BYTE 0
+
+PUBLIC bufferMovUCI
 bufferMovUCI        BYTE 5 DUP(0)
+
 indiceOrigen        DWORD 0
 indiceDestino       DWORD 0
 pistasUsadas        BYTE 0
@@ -150,7 +153,7 @@ main PROC
 Principal_ModoEnLinea:
     mov  modoJuego, MODO_EN_LINEA
     mov  turnoIA,   0
-    call Principal_ElegirCliente       ; NUEVO: preguntar A o B
+    call Principal_ElegirCliente
     call Principal_IniciarPartida
     jmp  Principal_Salir
 
@@ -175,8 +178,7 @@ main ENDP
 
 
 ; ===========================================================================
-; Principal_ElegirCliente — Pregunta al usuario si es Cliente A o B
-;                            y guarda en syncRolCliente ('a' o 'b')
+; Principal_ElegirCliente
 ; ===========================================================================
 Principal_ElegirCliente PROC
     push eax
@@ -189,7 +191,6 @@ ElegirCliente_Loop:
     call ReadChar
     call WriteChar
 
-    ; Salto de línea
     push eax
     mov  al, 0Dh
     call WriteChar
@@ -206,7 +207,6 @@ ElegirCliente_Loop:
     cmp  al, 'B'
     je   ElegirCliente_B
 
-    ; Opción inválida
     mov  edx, OFFSET msgClienteInvalido
     call WriteString
     jmp  ElegirCliente_Loop
@@ -536,7 +536,7 @@ Principal_ManejarPista ENDP
 
 ; ===========================================================================
 ; Principal_EsperarRivalSiCorresponde
-;   Retorna: AL = 1 si se ejecutó movimiento del rival, 0 si turno local
+;   Retorna: AL = 1 si se ejecuto movimiento del rival, 0 si turno local
 ; ===========================================================================
 Principal_EsperarRivalSiCorresponde PROC
     push ebx
@@ -560,7 +560,7 @@ Esperar_PollLoop:
 
     call Sync_LeerEstadoRemoto
 
-    ; Copiar syncLastMove → bufferMovUCI
+    ; Copiar syncLastMove a bufferMovUCI
     lea  esi, syncLastMove
     lea  edi, bufferMovUCI
     mov  al, [esi+0]

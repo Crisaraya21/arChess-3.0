@@ -85,7 +85,7 @@
       <AdditionalLibraryDirectories>C:\irvine</AdditionalLibraryDirectories>
     </Link>
     <MASM>
-      <IncludePaths>C:\irvine</IncludePaths>
+      <IncludePaths>C:\Irvine;$(IncludePath)</IncludePaths>
     </MASM>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -104,7 +104,7 @@
       <AdditionalLibraryDirectories>C:\irvine</AdditionalLibraryDirectories>
     </Link>
     <MASM>
-      <IncludePaths>C:\irvine</IncludePaths>
+      <IncludePaths>C:\Irvine;$(IncludePath)</IncludePaths>
     </MASM>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

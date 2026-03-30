@@ -667,43 +667,68 @@ Archivo_LeerEstado ENDP
 
 
 ; ===========================================================================
-; Procedimiento: Archivo_LeerPista
+; Procedimiento: Archivo_LeerPista  
 ; Descripción : Lee hint.json y extrae bestMove, scoreCp y depth.
 ;
 ; Retorna     : AL = 1 si éxito, 0 si error
 ; ===========================================================================
 Archivo_LeerPista PROC
+    push ebx
+    push ecx
     push edx
-    
-    ; --- TEST DE SUPERVIVENCIA ---
+    push esi
+    push edi
+
     mov  edx, OFFSET rutaHint
     call OpenInputFile
-    call WriteInt
-    mov  ebx, eax           ; Guardamos el handle
-    
     cmp  eax, INVALID_HANDLE
-    jne  Abrio_Bien
-    
-    ; SI LLEGA AQUÍ, ES QUE NO ENCUENTRA EL ARCHIVO
-    mov  al, 'X'            ; Imprime una X roja de error
-    call WriteChar
-    jmp  LeerPista_Fin
+    je   LeerPista_Error
 
-Abrio_Bien:
-    mov  al, 'O'            ; Imprime una O de que sí lo abrió
-    call WriteChar
-    
-    ; ... (Aquí seguís con el ReadFromFile que ya tenías)
-    ; PERO ASEGURATE DE CERRAR EL ARCHIVO AL FINAL
+    mov  ebx, eax
+    lea  edx, bufArchivo
+    mov  ecx, 512
+    mov  eax, ebx
+    call ReadFromFile
+    mov  bytesLeidos, eax
+
     mov  eax, ebx
     call CloseFile
-    ; ------------------------------
+
+    ; Null terminator
+    lea  esi, bufArchivo
+    mov  eax, bytesLeidos
+    mov  BYTE PTR [esi + eax], 0
+
+    ; bestMove (string)
+    lea  edx, clave_bestMove
+    lea  edi, archivoPista
+    mov  ecx, 6
+    call Aux_JSON_ExtraerStr
+
+    ; scoreCp (puede ser negativo)
+    lea  edx, clave_scoreCp
+    call Aux_JSON_ExtraerNum
+    mov  archivoPistaScore, eax
+
+    ; depth
+    lea  edx, clave_depth
+    call Aux_JSON_ExtraerNum
+    mov  archivoPistaDepth, eax
+
+    mov  al, 1
+    jmp  LeerPista_Fin
+
+LeerPista_Error:
+    mov  al, 0
 
 LeerPista_Fin:
+    pop  edi
+    pop  esi
     pop  edx
+    pop  ecx
+    pop  ebx
     ret
 Archivo_LeerPista ENDP
-
 
 ; ===========================================================================
 ; Procedimiento: Archivo_RegistrarMovimiento

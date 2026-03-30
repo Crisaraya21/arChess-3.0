@@ -1,11 +1,11 @@
 ; ===========================================================================
 ; engine_connector.asm - Modulo de Conexion con Motor IA
 ;
-; CAMBIO PRINCIPAL: lee hint.json DIRECTAMENTE con su propio mini-parser
-; en lugar de depender de Archivo_LeerPista de file_manager.asm.
-; Esto evita problemas con el parser JSON generico.
+; CAMBIO: Rutas corregidas a la ubicacion real del proyecto:
+;   C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\
 ;
-; Busca el substring bestMove en el archivo, avanza hasta la comilla
+; Lee hint.json DIRECTAMENTE con su propio mini-parser.
+; Busca el substring bestMove, avanza hasta la comilla
 ; de apertura del valor, y copia los siguientes 4 caracteres.
 ; ===========================================================================
 
@@ -68,9 +68,9 @@ EXTERNDEF hintBuf : BYTE
 ; ===========================================================================
 .data
 
-; >>> RUTAS ABSOLUTAS <<<
-cmdAIService    BYTE "C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe C:\arChess-3.0\services\ai_service.py", 0
-rutaHintEC      BYTE "C:\arChess-3.0\data\hint.json", 0
+; >>> RUTAS CORREGIDAS <<<
+cmdAIService    BYTE "C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\services\ai_service.py", 0
+rutaHintEC      BYTE "C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\data\hint.json", 0
 
 ecStartInf      EC_STARTUPINFO <>
 ecProcInf       EC_PROCESS_INFO <>
@@ -159,10 +159,7 @@ EC_LanzarAIService ENDP
 ; ===========================================================================
 ; EC_LeerHintDirecto - Lee hint.json directamente y extrae bestMove
 ;
-; Abre C:\arChess-3.0\data\hint.json, lee todo el contenido,
-; busca el substring "bestMove", avanza hasta encontrar ": "X
-; (donde X es la comilla de apertura del valor), y copia los
-; siguientes 4 caracteres como la jugada UCI.
+; Abre hint.json, lee contenido, busca "bestMove", extrae 4 chars UCI.
 ;
 ; Retorna: AL = 1 exito (motorBestMove lleno), 0 error
 ; ===========================================================================
@@ -182,16 +179,16 @@ EC_LeerHintDirecto PROC
     ; --- Abrir hint.json ---
     mov  edx, OFFSET rutaHintEC
     call OpenInputFile
-    cmp  eax, 0FFFFFFFFh       ; INVALID_HANDLE_VALUE
+    cmp  eax, 0FFFFFFFFh
     je   HintDir_Error
-    mov  ebx, eax              ; EBX = handle
+    mov  ebx, eax
 
     ; --- Leer contenido ---
     mov  eax, ebx
     lea  edx, ecHintBuffer
     mov  ecx, 510
     call ReadFromFile
-    mov  ecHintBuffer[eax], 0  ; null-terminate
+    mov  ecHintBuffer[eax], 0
     mov  ecBytesRead, eax
 
     ; --- Cerrar archivo ---
@@ -203,13 +200,12 @@ EC_LeerHintDirecto PROC
     jb   HintDir_Error
 
     ; --- Buscar "bestMove" en el buffer ---
-    lea  esi, ecHintBuffer     ; ESI = cursor en buffer
+    lea  esi, ecHintBuffer
 
 HintDir_BuscarLoop:
     cmp  BYTE PTR [esi], 0
-    je   HintDir_Error         ; fin del buffer sin encontrar
+    je   HintDir_Error
 
-    ; Comparar 8 bytes: b-e-s-t-M-o-v-e
     cmp  BYTE PTR [esi+0], 'b'
     jne  HintDir_Siguiente
     cmp  BYTE PTR [esi+1], 'e'
@@ -227,7 +223,6 @@ HintDir_BuscarLoop:
     cmp  BYTE PTR [esi+7], 'e'
     jne  HintDir_Siguiente
 
-    ; --- Encontrado! Avanzar pasado "bestMove" ---
     add  esi, 8
     jmp  HintDir_BuscarDosPuntos
 
@@ -236,7 +231,6 @@ HintDir_Siguiente:
     jmp  HintDir_BuscarLoop
 
 HintDir_BuscarDosPuntos:
-    ; Buscar ':' despues de bestMove
     cmp  BYTE PTR [esi], 0
     je   HintDir_Error
     cmp  BYTE PTR [esi], ':'
@@ -245,8 +239,7 @@ HintDir_BuscarDosPuntos:
     jmp  HintDir_BuscarDosPuntos
 
 HintDir_BuscarComilla:
-    inc  esi                   ; saltar ':'
-    ; Buscar '"' de apertura del valor
+    inc  esi
 HintDir_ComillaLoop:
     cmp  BYTE PTR [esi], 0
     je   HintDir_Error
@@ -256,10 +249,8 @@ HintDir_ComillaLoop:
     jmp  HintDir_ComillaLoop
 
 HintDir_ExtraerMove:
-    inc  esi                   ; saltar '"' de apertura
+    inc  esi
 
-    ; --- Copiar 4 caracteres del movimiento UCI ---
-    ; Verificar que hay al menos 4 chars validos (a-h, 1-8)
     cmp  BYTE PTR [esi], 'a'
     jb   HintDir_Error
     cmp  BYTE PTR [esi], 'h'
@@ -276,7 +267,6 @@ HintDir_ExtraerMove:
     mov  [edi+3], al
     mov  BYTE PTR [edi+4], 0
 
-    ; --- Verificar que no es "0000" (fallback de error) ---
     cmp  BYTE PTR [edi+0], '0'
     jne  HintDir_Exito
     cmp  BYTE PTR [edi+1], '0'
@@ -290,7 +280,6 @@ HintDir_Exito:
 
 HintDir_Error:
     mov  motorDisponible, 0
-    ; Limpiar motorBestMove
     lea  edi, motorBestMove
     mov  DWORD PTR [edi], 0
     mov  BYTE PTR [edi+4], 0
@@ -308,7 +297,6 @@ EC_LeerHintDirecto ENDP
 
 ; ===========================================================================
 ; Motor_SolicitarJugada - Modo vs IA
-;   Actualiza game_state, lanza Python, lee hint, copia a bufferMovUCI
 ; ===========================================================================
 Motor_SolicitarJugada PROC
     push ebx
@@ -320,21 +308,17 @@ Motor_SolicitarJugada PROC
     mov  edx, OFFSET msgMotorInicio
     call WriteString
 
-    ; Paso 1: actualizar game_state.json
     call Archivo_GenerarFEN
     call Archivo_EscribirEstado
 
-    ; Paso 2: lanzar Python
     call EC_LanzarAIService
     cmp  al, 0
     je   SolJugada_Error
 
-    ; Paso 3: leer hint.json directamente
     call EC_LeerHintDirecto
     cmp  al, 0
     je   SolJugada_Error
 
-    ; Paso 4: copiar motorBestMove a bufferMovUCI
     lea  esi, motorBestMove
     lea  edi, bufferMovUCI
     mov  al, [esi+0]
@@ -347,7 +331,6 @@ Motor_SolicitarJugada PROC
     mov  [edi+3], al
     mov  BYTE PTR [edi+4], 0
 
-    ; Mostrar resultado
     mov  edx, OFFSET msgMotorOk
     call WriteString
     mov  edx, OFFSET motorBestMove
@@ -375,7 +358,6 @@ Motor_SolicitarJugada ENDP
 
 ; ===========================================================================
 ; Motor_SolicitarPista - Modo pista (hint)
-;   Igual que SolicitarJugada pero NO copia a bufferMovUCI
 ; ===========================================================================
 Motor_SolicitarPista PROC
     push ebx

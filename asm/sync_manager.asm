@@ -1,6 +1,8 @@
 ; ===========================================================================
 ; sync_manager.asm - Modulo Puente MASM <-> Python
-; RUTAS: absolutas a C:\arChess-3.0\
+;
+; CAMBIO: Rutas corregidas a la ubicacion real del proyecto:
+;   C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -75,14 +77,14 @@ Tablero_ObtenerContadorMovimientos PROTO
 ; ===========================================================================
 .data
 
-; >>> RUTA ABSOLUTA al script Python <<<
-cmdBase         BYTE "C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe C:\arChess-3.0\services\sync_service.py ", 0
+; >>> RUTA CORREGIDA <<<
+cmdBase         BYTE "C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\services\sync_service.py ", 0
 
 sufUpload       BYTE "upload ", 0
 sufDownload     BYTE "download ", 0
 sufListen       BYTE "listen ", 0
 
-cmdBuffer       BYTE 120 DUP(0)
+cmdBuffer       BYTE 256 DUP(0)
 
 startInf        STARTUPINFO_S <>
 procInf         PROCESS_INFO_S <>

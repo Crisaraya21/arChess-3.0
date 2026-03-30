@@ -54,6 +54,7 @@ UI_MostrarReloj                  PROTO
 UI_MostrarPista                  PROTO
 UI_MostrarPistasAgotadas         PROTO
 UI_ActualizarReloj               PROTO
+UI_IniciarReloj                  PROTO
 UI_LimpiarPantalla               PROTO
 
 Entrada_LeerMovimientoUCI        PROTO
@@ -237,6 +238,7 @@ Principal_IniciarPartida PROC
     push eax
     push ebx
     call Tablero_Inicializar
+    call UI_IniciarReloj
     call Archivo_InicializarEstado
     mov  pistasUsadas,           0
     mov  partidaActiva,          1
@@ -278,6 +280,7 @@ Bucle_Inicio:
     call UI_MostrarTablero
     call UI_MostrarTurno
     call UI_MostrarReloj
+    call UI_ActualizarReloj
     call UI_MostrarHistorial
 
     call Tablero_ObtenerJaque

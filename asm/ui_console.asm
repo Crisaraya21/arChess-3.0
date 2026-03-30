@@ -55,6 +55,7 @@ PUBLIC UI_MostrarReloj
 PUBLIC UI_MostrarPista
 PUBLIC UI_MostrarPistasAgotadas
 PUBLIC UI_ActualizarReloj
+PUBLIC UI_IniciarReloj
 
 Tablero_ObtenerTurno               PROTO
 Tablero_ObtenerContadorMovimientos PROTO
@@ -87,6 +88,8 @@ strNoHints       BYTE "  Sin pistas.   ",0
 
 clockSeconds     DWORD 300
 clockBuf         BYTE "00:00",0,0
+tickInicio       DWORD 0
+tickPorTurno     DWORD 300000
 
 PUBLIC hintBuf
 hintBuf          BYTE "----",0
@@ -531,17 +534,31 @@ UI_MostrarReloj PROC USES eax ebx ecx edx
     ret
 UI_MostrarReloj ENDP
 
-UI_ActualizarReloj PROC USES eax
-    cmp  clockSeconds, 0
-    jne  ActReloj_Dec
-    mov  clockSeconds, 300
+UI_ActualizarReloj PROC USES eax ebx edx
+    call GetTickCount               ; EAX = ms actuales
+    sub  eax, tickInicio            ; EAX = ms transcurridos
+    mov  ebx, 1000
+    xor  edx, edx
+    div  ebx                        ; EAX = segundos transcurridos
+    cmp  eax, 300
+    jae  ActReloj_Agotado
+    mov  ebx, 300
+    sub  ebx, eax                   ; EBX = segundos restantes
+    mov  clockSeconds, ebx
     jmp  ActReloj_Dibujar
-ActReloj_Dec:
-    dec  clockSeconds
+ActReloj_Agotado:
+    mov  clockSeconds, 0
 ActReloj_Dibujar:
     call UI_MostrarReloj
     ret
 UI_ActualizarReloj ENDP
+
+UI_IniciarReloj PROC
+    call GetTickCount
+    mov  tickInicio, eax
+    mov  clockSeconds, 300
+    ret
+UI_IniciarReloj ENDP
 
 UI_MostrarPista PROC USES eax edx
     mov  dl, HINT_COL

@@ -1,6 +1,12 @@
 ; ===========================================================
 ;  ui_console.asm  -  arChess 3.0
-;  CAMBIO: PUBLIC hintBuf (para engine_connector.asm)
+;
+;  CAMBIOS:
+;    - Reloj por turno REAL usando GetTickCount
+;      Se guarda el timestamp de inicio de cada turno.
+;      UI_MostrarReloj calcula el tiempo transcurrido
+;      y muestra el tiempo restante (5:00 - transcurrido).
+;    - PUBLIC hintBuf (para engine_connector.asm)
 ; ===========================================================
 
 INCLUDE Irvine32.inc
@@ -42,6 +48,11 @@ HINT_COL             EQU 30
 HINT_ROW             EQU 18
 MAX_HIST_VISIBLE     EQU 14
 
+; Tiempo por turno en milisegundos (5 minutos = 300000 ms)
+TIEMPO_TURNO_MS      EQU 300000
+
+GetTickCount PROTO
+
 PUBLIC UI_LimpiarPantalla
 PUBLIC UI_MostrarTablero
 PUBLIC UI_MostrarMenuPrincipal
@@ -55,7 +66,6 @@ PUBLIC UI_MostrarReloj
 PUBLIC UI_MostrarPista
 PUBLIC UI_MostrarPistasAgotadas
 PUBLIC UI_ActualizarReloj
-PUBLIC UI_IniciarReloj
 
 Tablero_ObtenerTurno               PROTO
 Tablero_ObtenerContadorMovimientos PROTO
@@ -85,11 +95,12 @@ strHintLabel     BYTE "Sugerencia: ",0
 strClockLabel    BYTE "Reloj: ",0
 strHistLabel     BYTE "--- Historial ---",0
 strNoHints       BYTE "  Sin pistas.   ",0
+strClockAgotado  BYTE "AGOTADO ",0
 
-clockSeconds     DWORD 300
-clockBuf         BYTE "00:00",0,0
-tickInicio       DWORD 0
-tickPorTurno     DWORD 300000
+; --- Reloj por turno ---
+clockTurnStart   DWORD 0         ; GetTickCount al inicio del turno
+clockSecondsLeft DWORD 300       ; segundos restantes calculados
+clockBuf         BYTE "00:00",0,0,0
 
 PUBLIC hintBuf
 hintBuf          BYTE "----",0
@@ -498,7 +509,41 @@ UI_MostrarMovimientoIlegal PROC USES eax edx
     ret
 UI_MostrarMovimientoIlegal ENDP
 
+; ===========================================================
+;  UI_MostrarReloj - Muestra tiempo restante del turno
+;
+;  Calcula: transcurrido = (GetTickCount - clockTurnStart) / 1000
+;           restante = 300 - transcurrido
+;  Si clockTurnStart == 0, lo inicializa (primer turno).
+; ===========================================================
 UI_MostrarReloj PROC USES eax ebx ecx edx
+    ; Si es el primer llamado, inicializar el timestamp
+    cmp  clockTurnStart, 0
+    jne  MosReloj_Calcular
+    call GetTickCount
+    mov  clockTurnStart, eax
+
+MosReloj_Calcular:
+    ; Obtener tick actual
+    call GetTickCount
+    sub  eax, clockTurnStart    ; EAX = milisegundos transcurridos
+    xor  edx, edx
+    mov  ebx, 1000
+    div  ebx                    ; EAX = segundos transcurridos
+
+    ; Calcular segundos restantes
+    mov  ebx, 300               ; 5 minutos = 300 segundos
+    cmp  eax, ebx
+    jae  MosReloj_Agotado
+    sub  ebx, eax               ; EBX = segundos restantes
+    mov  clockSecondsLeft, ebx
+    jmp  MosReloj_Formatear
+
+MosReloj_Agotado:
+    mov  clockSecondsLeft, 0
+
+MosReloj_Formatear:
+    ; Posicionar cursor
     mov  dl, CLOCK_COL
     mov  dh, CLOCK_ROW
     call UI_Goto
@@ -506,59 +551,64 @@ UI_MostrarReloj PROC USES eax ebx ecx edx
     call SetTextColor
     mov  edx, OFFSET strClockLabel
     call WriteString
-    mov  eax, clockSeconds
+
+    ; Si agotado, mostrar mensaje
+    cmp  clockSecondsLeft, 0
+    je   MosReloj_MostrarAgotado
+
+    ; Formatear MM:SS
+    mov  eax, clockSecondsLeft
     xor  edx, edx
     mov  ebx, 60
-    div  ebx
-    push edx
+    div  ebx                    ; EAX = minutos, EDX = segundos
+    push edx                    ; guardar segundos
+
+    ; Minutos (2 digitos)
     xor  edx, edx
     mov  ecx, 10
-    div  ecx
+    div  ecx                    ; AL = decenas min, DL = unidades min
     add  al, '0'
     mov  clockBuf[0], al
     add  dl, '0'
     mov  clockBuf[1], dl
     mov  clockBuf[2], ':'
-    pop  eax
+
+    ; Segundos (2 digitos)
+    pop  eax                    ; recuperar segundos
     xor  edx, edx
-    div  ecx
+    div  ecx                    ; AL = decenas seg, DL = unidades seg
     add  al, '0'
     mov  clockBuf[3], al
     add  dl, '0'
     mov  clockBuf[4], dl
     mov  clockBuf[5], 0
+
     mov  edx, OFFSET clockBuf
     call WriteString
+    jmp  MosReloj_Fin
+
+MosReloj_MostrarAgotado:
+    mov  edx, OFFSET strClockAgotado
+    call WriteString
+
+MosReloj_Fin:
     mov  eax, CLR_RESET
     call SetTextColor
     ret
 UI_MostrarReloj ENDP
 
-UI_ActualizarReloj PROC USES eax ebx edx
-    call GetTickCount               ; EAX = ms actuales
-    sub  eax, tickInicio            ; EAX = ms transcurridos
-    mov  ebx, 1000
-    xor  edx, edx
-    div  ebx                        ; EAX = segundos transcurridos
-    cmp  eax, 300
-    jae  ActReloj_Agotado
-    mov  ebx, 300
-    sub  ebx, eax                   ; EBX = segundos restantes
-    mov  clockSeconds, ebx
-    jmp  ActReloj_Dibujar
-ActReloj_Agotado:
-    mov  clockSeconds, 0
-ActReloj_Dibujar:
+; ===========================================================
+;  UI_ActualizarReloj - Reinicia el timer del turno
+;
+;  Se llama al cambiar de turno (despues de un movimiento).
+;  Guarda el timestamp actual como inicio del nuevo turno.
+; ===========================================================
+UI_ActualizarReloj PROC USES eax
+    call GetTickCount
+    mov  clockTurnStart, eax
     call UI_MostrarReloj
     ret
 UI_ActualizarReloj ENDP
-
-UI_IniciarReloj PROC
-    call GetTickCount
-    mov  tickInicio, eax
-    mov  clockSeconds, 300
-    ret
-UI_IniciarReloj ENDP
 
 UI_MostrarPista PROC USES eax edx
     mov  dl, HINT_COL

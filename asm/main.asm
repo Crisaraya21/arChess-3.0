@@ -81,6 +81,7 @@ Archivo_IncrementarVersion       PROTO
 Motor_SolicitarJugada            PROTO
 Motor_SolicitarPista             PROTO
 Motor_ObtenerMejorMovimiento     PROTO
+Rutas_Inicializar                PROTO
 
 EXTERNDEF syncLastMove     : BYTE
 EXTERNDEF syncRolCliente   : BYTE
@@ -141,8 +142,9 @@ msgNL               BYTE 0Dh, 0Ah, 0
 .code
 
 main PROC
-    push ebp
+push ebp
     mov  ebp, esp
+    call Rutas_Inicializar
     call Principal_MostrarBienvenida
     call Entrada_LeerOpcionMenu
     movzx eax, al

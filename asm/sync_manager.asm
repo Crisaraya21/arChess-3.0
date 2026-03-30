@@ -1,8 +1,8 @@
 ; ===========================================================================
 ; sync_manager.asm - Modulo Puente MASM <-> Python
 ;
-; CAMBIO: Rutas corregidas a la ubicacion real del proyecto:
-;   C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\
+; CAMBIO: Usa cmdPythonSync de path_resolver.asm en vez de rutas
+;         hardcodeadas. Funciona en cualquier computadora.
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -61,6 +61,9 @@ EXTERNDEF archivoLastMove  : BYTE
 EXTERNDEF archivoStatus    : BYTE
 EXTERNDEF archivoUpdatedAt : BYTE
 
+; --- Ruta dinamica de path_resolver.asm ---
+EXTERNDEF cmdPythonSync    : BYTE
+
 Archivo_InicializarEstado    PROTO
 Archivo_EscribirEstado       PROTO
 Archivo_LeerEstado           PROTO
@@ -77,14 +80,11 @@ Tablero_ObtenerContadorMovimientos PROTO
 ; ===========================================================================
 .data
 
-; >>> RUTA CORREGIDA <<<
-cmdBase         BYTE "C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\services\sync_service.py ", 0
-
 sufUpload       BYTE "upload ", 0
 sufDownload     BYTE "download ", 0
 sufListen       BYTE "listen ", 0
 
-cmdBuffer       BYTE 256 DUP(0)
+cmdBuffer       BYTE 512 DUP(0)
 
 startInf        STARTUPINFO_S <>
 procInf         PROCESS_INFO_S <>
@@ -110,13 +110,21 @@ PUBLIC Sync_LeerEstadoRemoto
 PUBLIC Sync_RegistrarMovimiento
 PUBLIC Sync_VerificarActualizacion
 
+; ===========================================================================
+; Sync_ConstruirComando
+; Construye: cmdPythonSync + sufijo + rol
+; cmdPythonSync ya tiene: python.exe "...\sync_service.py"
+; Le concatenamos: upload/download/listen + a/b
+; ===========================================================================
 Sync_ConstruirComando PROC
     push eax
     push esi
     push edi
     lea  edi, cmdBuffer
+
+    ; Copiar cmdPythonSync (base del comando)
     push esi
-    lea  esi, cmdBase
+    lea  esi, cmdPythonSync
 Cmd_CopiarBase:
     mov  al, [esi]
     cmp  al, 0
@@ -127,6 +135,8 @@ Cmd_CopiarBase:
     jmp  Cmd_CopiarBase
 Cmd_BaseDone:
     pop  esi
+
+    ; Copiar sufijo (upload/download/listen)
 Cmd_CopiarSufijo:
     mov  al, [esi]
     cmp  al, 0
@@ -136,10 +146,13 @@ Cmd_CopiarSufijo:
     inc  edi
     jmp  Cmd_CopiarSufijo
 Cmd_SufijoDone:
+
+    ; Agregar rol (a/b)
     mov  al, syncRolCliente
     mov  [edi], al
     inc  edi
     mov  BYTE PTR [edi], 0
+
     pop  edi
     pop  esi
     pop  eax

@@ -1,12 +1,9 @@
 ; ===========================================================================
 ; engine_connector.asm - Modulo de Conexion con Motor IA
 ;
-; CAMBIO: Rutas corregidas a la ubicacion real del proyecto:
-;   C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\
-;
-; Lee hint.json DIRECTAMENTE con su propio mini-parser.
-; Busca el substring bestMove, avanza hasta la comilla
-; de apertura del valor, y copia los siguientes 4 caracteres.
+; CAMBIO: Ya no tiene rutas hardcodeadas. Usa las variables publicas
+;         de path_resolver.asm (cmdPythonAI, rutaHintJson).
+;         Funciona en CUALQUIER computadora sin modificar codigo.
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -55,32 +52,24 @@ CreateProcessA PROTO,
 WaitForSingleObject PROTO, hHandle:DWORD, dwMilliseconds:DWORD
 CloseHandle PROTO, hObject:DWORD
 
-; --- file_manager.asm (solo para GenerarFEN y EscribirEstado) ---
 Archivo_GenerarFEN      PROTO
 Archivo_EscribirEstado  PROTO
 
-; --- main.asm ---
 EXTERNDEF bufferMovUCI : BYTE
+EXTERNDEF hintBuf      : BYTE
 
-; --- ui_console.asm ---
-EXTERNDEF hintBuf : BYTE
+; --- Rutas dinamicas de path_resolver.asm ---
+EXTERNDEF cmdPythonAI  : BYTE
+EXTERNDEF rutaHintJson : BYTE
 
 ; ===========================================================================
 .data
 
-; >>> RUTAS CORREGIDAS <<<
-cmdAIService    BYTE "C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\services\ai_service.py", 0
-rutaHintEC      BYTE "C:\Users\Usuario\Documentos\TEC\Proyecto\arChess-3.0\data\hint.json", 0
-
 ecStartInf      EC_STARTUPINFO <>
 ecProcInf       EC_PROCESS_INFO <>
 
-; Buffer propio para leer hint.json (512 bytes)
 ecHintBuffer    BYTE 512 DUP(0)
 ecBytesRead     DWORD 0
-
-; Substring a buscar en el JSON
-ecKeyBestMove   BYTE "bestMove", 0
 
 motorDisponible BYTE 0
 motorBestMove   BYTE 8 DUP(0)
@@ -98,9 +87,6 @@ PUBLIC Motor_SolicitarPista
 PUBLIC Motor_ObtenerMejorMovimiento
 
 
-; ===========================================================================
-; EC_PrepararEstructuras
-; ===========================================================================
 EC_PrepararEstructuras PROC
     push eax
     push ecx
@@ -123,9 +109,6 @@ EC_PrepararEstructuras PROC
 EC_PrepararEstructuras ENDP
 
 
-; ===========================================================================
-; EC_LanzarAIService - Lanza ai_service.py y espera
-; ===========================================================================
 EC_LanzarAIService PROC
     push ebx
     push ecx
@@ -134,7 +117,7 @@ EC_LanzarAIService PROC
     push edi
     call EC_PrepararEstructuras
     INVOKE CreateProcessA,
-        NULL, ADDR cmdAIService, NULL, NULL, 0,
+        NULL, ADDR cmdPythonAI, NULL, NULL, 0,
         EC_NORMAL_PRIORITY, NULL, NULL,
         ADDR ecStartInf, ADDR ecProcInf
     cmp  eax, 0
@@ -156,13 +139,6 @@ LanzarAI_Fin:
 EC_LanzarAIService ENDP
 
 
-; ===========================================================================
-; EC_LeerHintDirecto - Lee hint.json directamente y extrae bestMove
-;
-; Abre hint.json, lee contenido, busca "bestMove", extrae 4 chars UCI.
-;
-; Retorna: AL = 1 exito (motorBestMove lleno), 0 error
-; ===========================================================================
 EC_LeerHintDirecto PROC
     push ebx
     push ecx
@@ -170,20 +146,18 @@ EC_LeerHintDirecto PROC
     push esi
     push edi
 
-    ; --- Limpiar buffer ---
     lea  edi, ecHintBuffer
     mov  ecx, 512
     xor  al, al
     rep  stosb
 
-    ; --- Abrir hint.json ---
-    mov  edx, OFFSET rutaHintEC
+    ; Usar ruta dinamica
+    mov  edx, OFFSET rutaHintJson
     call OpenInputFile
     cmp  eax, 0FFFFFFFFh
     je   HintDir_Error
     mov  ebx, eax
 
-    ; --- Leer contenido ---
     mov  eax, ebx
     lea  edx, ecHintBuffer
     mov  ecx, 510
@@ -191,21 +165,17 @@ EC_LeerHintDirecto PROC
     mov  ecHintBuffer[eax], 0
     mov  ecBytesRead, eax
 
-    ; --- Cerrar archivo ---
     mov  eax, ebx
     call CloseFile
 
-    ; --- Verificar que leimos algo ---
     cmp  ecBytesRead, 10
     jb   HintDir_Error
 
-    ; --- Buscar "bestMove" en el buffer ---
     lea  esi, ecHintBuffer
 
 HintDir_BuscarLoop:
     cmp  BYTE PTR [esi], 0
     je   HintDir_Error
-
     cmp  BYTE PTR [esi+0], 'b'
     jne  HintDir_Siguiente
     cmp  BYTE PTR [esi+1], 'e'
@@ -222,7 +192,6 @@ HintDir_BuscarLoop:
     jne  HintDir_Siguiente
     cmp  BYTE PTR [esi+7], 'e'
     jne  HintDir_Siguiente
-
     add  esi, 8
     jmp  HintDir_BuscarDosPuntos
 
@@ -250,7 +219,6 @@ HintDir_ComillaLoop:
 
 HintDir_ExtraerMove:
     inc  esi
-
     cmp  BYTE PTR [esi], 'a'
     jb   HintDir_Error
     cmp  BYTE PTR [esi], 'h'
@@ -295,9 +263,6 @@ HintDir_Fin:
 EC_LeerHintDirecto ENDP
 
 
-; ===========================================================================
-; Motor_SolicitarJugada - Modo vs IA
-; ===========================================================================
 Motor_SolicitarJugada PROC
     push ebx
     push ecx
@@ -356,9 +321,6 @@ SolJugada_Fin:
 Motor_SolicitarJugada ENDP
 
 
-; ===========================================================================
-; Motor_SolicitarPista - Modo pista (hint)
-; ===========================================================================
 Motor_SolicitarPista PROC
     push ebx
     push ecx
@@ -405,9 +367,6 @@ SolPista_Fin:
 Motor_SolicitarPista ENDP
 
 
-; ===========================================================================
-; Motor_ObtenerMejorMovimiento - Copia bestMove a hintBuf de ui_console
-; ===========================================================================
 Motor_ObtenerMejorMovimiento PROC
     push esi
     push edi
@@ -426,7 +385,6 @@ Motor_ObtenerMejorMovimiento PROC
     mov  al, [esi+3]
     mov  [edi+3], al
     mov  BYTE PTR [edi+4], 0
-
     mov  al, 1
     jmp  ObtenerMov_Fin
 

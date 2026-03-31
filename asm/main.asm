@@ -29,6 +29,7 @@ Tablero_Inicializar              PROTO
 Tablero_ObtenerTurno             PROTO
 Tablero_CambiarTurno             PROTO
 Tablero_MoverPieza               PROTO
+Tablero_ObtenerPieza             PROTO
 Tablero_ObtenerEstado            PROTO
 Tablero_EstablecerEstado         PROTO
 Tablero_ObtenerJaque             PROTO
@@ -36,6 +37,7 @@ Tablero_EstablecerJaque          PROTO
 Tablero_ObtenerPosRey            PROTO
 Tablero_UCIAIndice               PROTO
 Tablero_ObtenerContadorMovimientos PROTO
+Tablero_EjecutarEnroque          PROTO
 
 Validar_Movimiento               PROTO
 Verificar_ReyEnJaque             PROTO
@@ -351,6 +353,10 @@ Bucle_ValidarMovimiento:
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
 
+    mov  eax, indiceOrigen
+    mov  ebx, indiceDestino
+    call Tablero_EjecutarEnroque
+
     mov  edx, OFFSET bufferMovUCI
     call Archivo_ActualizarLastMove
     call Sync_RegistrarMovimiento
@@ -467,6 +473,10 @@ TurnoIA_Reintentar:
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
 
+    mov  eax, indiceOrigen
+    mov  ebx, indiceDestino
+    call Tablero_EjecutarEnroque
+
     ; Registrar en archivos
     mov  edx, OFFSET bufferMovUCI
     call Archivo_ActualizarLastMove
@@ -549,6 +559,7 @@ Main_RegistrarMovEnHistorial ENDP
 Principal_ParsearUCI PROC
     push ebx
     push ecx
+    push edx
     movzx eax, bufferMovUCI[0]
     cmp  al, 'a'
     jb   ParsearUCI_Error
@@ -581,11 +592,56 @@ Principal_ParsearUCI PROC
     cmp  eax, 0FFFFFFFFh
     je   ParsearUCI_Error
     mov  indiceDestino, eax
+
+    ; --- INICIO HACK ENROQUE ---
+    push eax
+    push ebx
+    mov  eax, indiceOrigen
+    call Tablero_ObtenerPieza
+    cmp  al, 6    ; WHITE_KING
+    jne  C_VerReyNegro
+    cmp  indiceOrigen, 60
+    jne  C_FinHack
+    cmp  indiceDestino, 63
+    jne  C_WhiteLargo
+    mov  indiceDestino, 62
+    mov  BYTE PTR bufferMovUCI[2], 'g'
+    jmp  C_FinHack
+C_WhiteLargo:
+    cmp  indiceDestino, 56
+    jne  C_FinHack
+    mov  indiceDestino, 58
+    mov  BYTE PTR bufferMovUCI[2], 'c'
+    jmp  C_FinHack
+
+C_VerReyNegro:
+    cmp  al, 12   ; BLACK_KING
+    jne  C_FinHack
+    cmp  indiceOrigen, 4
+    jne  C_FinHack
+    cmp  indiceDestino, 7
+    jne  C_BlackLargo
+    mov  indiceDestino, 6
+    mov  BYTE PTR bufferMovUCI[2], 'g'
+    jmp  C_FinHack
+C_BlackLargo:
+    cmp  indiceDestino, 0
+    jne  C_FinHack
+    mov  indiceDestino, 2
+    mov  BYTE PTR bufferMovUCI[2], 'c'
+
+C_FinHack:
+    pop  ebx
+    pop  eax
+    ; --- FIN HACK ENROQUE ---
+
     mov  al, 1
     jmp  ParsearUCI_Fin
+
 ParsearUCI_Error:
     mov  al, 0
 ParsearUCI_Fin:
+    pop  edx
     pop  ecx
     pop  ebx
     ret
@@ -661,6 +717,11 @@ Esperar_PollLoop:
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
+
+    mov  eax, indiceOrigen
+    mov  ebx, indiceDestino
+    call Tablero_EjecutarEnroque
+
     call Sync_RegistrarMovimiento
     mov  al, 1
     jmp  Esperar_Fin

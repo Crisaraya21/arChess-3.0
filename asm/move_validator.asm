@@ -626,12 +626,14 @@ Validar_Alfil_Completo PROC
 
     ; |dFila| == |dCol| y != 0
     mov  eax, esi
+    cmp  eax, 0
     jns  A2_AbsFila
     neg  eax
 A2_AbsFila:
     mov  ecx, eax
 
     mov  eax, edi
+    cmp  eax, 0
     jns  A2_AbsCol
     neg  eax
 A2_AbsCol:
@@ -822,9 +824,19 @@ Rey_PosCol:
 
     cmp  esi, 1
     ja   Rey_Ilegal
-    cmp  edi, 1
-    ja   Rey_Ilegal
 
+    cmp  edi, 1
+    jbe  Rey_Normal
+
+    cmp  edi, 2
+    jne  Rey_Ilegal
+    cmp  esi, 0
+    jne  Rey_Ilegal
+
+    mov  al, 1
+    jmp  Rey_Fin
+
+Rey_Normal:
     mov  eax, esi
     add  eax, edi
     cmp  eax, 0

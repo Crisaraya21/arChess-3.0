@@ -106,6 +106,7 @@ PUBLIC Tablero_EstablecerEstado
 PUBLIC Tablero_ObtenerEstado
 PUBLIC Tablero_ObtenerContadorMovimientos
 PUBLIC Tablero_UCIAIndice
+PUBLIC Tablero_EjecutarEnroque
  
 ; ===========================================================================
 ; Procedimiento: Tablero_Inicializar
@@ -541,5 +542,68 @@ UCIAIndice_Fin:
     pop  ebx
     ret
 Tablero_UCIAIndice ENDP
- 
+
+; ===========================================================================
+; Procedimiento: Tablero_EjecutarEnroque
+; Mueve la torre automáticamente si se detecta que el rey saltó 2 casillas
+; ===========================================================================
+Tablero_EjecutarEnroque PROC
+    push esi
+    push ecx
+    lea  esi, board
+
+    mov  cl, [esi + ebx]
+    cmp  cl, WHITE_KING
+    je   VerificarBlancas
+    cmp  cl, BLACK_KING
+    je   VerificarNegras
+    jmp  FinEnroque
+
+VerificarBlancas:
+    cmp  eax, 60
+    jne  FinEnroque
+    cmp  ebx, 62
+    je   EnroqueCortoB
+    cmp  ebx, 58
+    je   EnroqueLargoB
+    jmp  FinEnroque
+
+VerificarNegras:
+    cmp  eax, 4
+    jne  FinEnroque
+    cmp  ebx, 6
+    je   EnroqueCortoN
+    cmp  ebx, 2
+    je   EnroqueLargoN
+    jmp  FinEnroque
+
+EnroqueCortoB:
+    mov  ch, [esi + 63]
+    mov  [esi + 61], ch
+    mov  BYTE PTR [esi + 63], EMPTY
+    jmp  FinEnroque
+
+EnroqueLargoB:
+    mov  ch, [esi + 56]
+    mov  [esi + 59], ch
+    mov  BYTE PTR [esi + 56], EMPTY
+    jmp  FinEnroque
+
+EnroqueCortoN:
+    mov  ch, [esi + 7]
+    mov  [esi + 5], ch
+    mov  BYTE PTR [esi + 7], EMPTY
+    jmp  FinEnroque
+
+EnroqueLargoN:
+    mov  ch, [esi + 0]
+    mov  [esi + 3], ch
+    mov  BYTE PTR [esi + 0], EMPTY
+
+FinEnroque:
+    pop  ecx
+    pop  esi
+    ret
+Tablero_EjecutarEnroque ENDP
+
 END

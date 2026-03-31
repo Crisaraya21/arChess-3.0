@@ -282,7 +282,6 @@ Bucle_Inicio:
     call UI_MostrarTablero
     call UI_MostrarTurno
     call UI_MostrarReloj
-    call UI_ActualizarReloj
     call UI_MostrarHistorial
 
     call Tablero_ObtenerJaque

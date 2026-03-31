@@ -702,16 +702,17 @@ A2_AbsCol:                      ; EAX = |dCol|
     cmp  ecx, 0
     je   A2_Ilegal
 
-    ; --- Calcular paso diagonal en vector lineal ---
-    ; fila visual sube (dFila>0) -> indice BAJA -> paso -8
-    ; fila visual baja (dFila<0) -> indice SUBE -> paso +8
+; --- Calcular paso diagonal usando INDICES directamente ---
+    ; Si destino < origen -> indice baja -> paso -8
+    ; Si destino > origen -> indice sube -> paso +8
     xor  ecx, ecx
-    cmp  esi, 0
-    jg   A2_FilaArriba
-    add  ecx, 8                 ; dFila < 0: indice sube
+    mov  eax, [ebp-8]          ; destino
+    cmp  eax, [ebp-4]          ; vs origen
+    jl   A2_FilaArriba
+    add  ecx, 8                ; dest > orig: indice sube (+8)
     jmp  A2_VerCol
 A2_FilaArriba:
-    sub  ecx, 8                 ; dFila > 0: indice baja
+    sub  ecx, 8                ; dest < orig: indice baja (-8)
 
 A2_VerCol:
     cmp  edi, 0

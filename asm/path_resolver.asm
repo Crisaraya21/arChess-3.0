@@ -86,7 +86,7 @@ Rutas_SubirLoop:
 
 Rutas_SubirDone:
     ; Agregar '\' final
-    lea  esi, rutaProyecto
+    lea  edi, rutaProyecto 
     call PR_FinStr
     mov  BYTE PTR [esi], '\'
     inc  esi

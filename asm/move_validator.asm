@@ -1,42 +1,24 @@
 ; ===========================================================================
-; move_validator.asm - Modulo de Validacion de Movimientos (CORREGIDO)
+; move_validator.asm - Modulo de Validacion de Movimientos (CORREGIDO v2)
 ;
-; BUGS CORREGIDOS:
+; BUG CRITICO CORREGIDO EN ESTA VERSION:
 ;
-;   1. Validar_Alfil: La version vieja tenia un desbalance de pila
-;      catastrofico (push/pop no coincidian) y nunca recorria
-;      correctamente las casillas intermedias. ELIMINADA y reemplazada
-;      por un wrapper a Validar_Alfil_Completo.
+;   Tablero_EstaVacia DESTRUYE EAX (lo usa como input y lo sobreescribe).
+;   En los bucles de recorrido del alfil y la torre, EAX se usaba como
+;   cursor (posicion actual en la diagonal/linea). Despues de llamar a
+;   Tablero_EstaVacia, EAX quedaba con basura y el bucle se perdia.
 ;
-;   2. Validar_Alfil_Completo: REESCRITO COMPLETAMENTE. Los indices
-;      origen/destino se perdian tras calcular coordenadas porque los
-;      registros se sobreescribian. Ahora se guardan en variables
-;      locales de pila (ebp-4, ebp-8) desde el inicio.
-;      Se elimino la dependencia de indiceOrigenTemp/indiceDestinoTemp
-;      que solo se seteaban desde algunos llamadores.
+;   FIX: Se agrega push eax / pop eax alrededor de CADA llamada a
+;   Tablero_EstaVacia en los bucles de recorrido.
 ;
-;   3. Validar_Reina: REESCRITO COMPLETAMENTE. La version vieja usaba
-;      cdq que sobreescribia EDX (que contenia columna origen),
-;      corrompiendo el calculo de |dCol|. Ahora usa variables locales
-;      de pila y calcula las diferencias absolutas de forma segura.
-;
-;   4. Validar_Ataque (peones): La deteccion de ataque diagonal del
-;      peon no verificaba wrapping de columna. Un peon en columna 'a'
-;      podia "atacar" a la izquierda envolviendo a columna 'h'.
-;      Ahora se validan las columnas origen y destino.
-;
-;   5. Simular_Y_VerificarJaque: Despues de revertir el movimiento,
-;      la pieza de destino original se restaura con EstablecerPieza
-;      y la pieza movida vuelve con MoverPieza, lo cual actualiza
-;      correctamente la posicion del rey si era un rey.
+;   Tambien se corrigio Simular_Y_VerificarJaque para guardar el
+;   resultado de jaque en una variable de pila en vez de CL, que
+;   podia ser destruido por las llamadas posteriores.
 ;
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
 
-; ---------------------------------------------------------------------------
-; Constantes (deben coincidir con board.asm)
-; ---------------------------------------------------------------------------
 EMPTY           EQU 0
 PEON_BLANCO     EQU 1
 TORRE_BLANCA    EQU 2
@@ -58,9 +40,6 @@ SIN_COLOR       EQU 2
 BOARD_SIZE      EQU 64
 BOARD_COLS      EQU 8
 
-; ---------------------------------------------------------------------------
-; Referencias externas (definidas en board.asm)
-; ---------------------------------------------------------------------------
 EXTERN board                    : BYTE
 Tablero_ObtenerPieza PROTO
 Tablero_ObtenerColor PROTO
@@ -71,23 +50,16 @@ Tablero_EstablecerPieza PROTO
 Tablero_ObtenerPosRey PROTO
 Tablero_ObtenerTurno PROTO
 
-; ---------------------------------------------------------------------------
-; Declaraciones PUBLIC
-; ---------------------------------------------------------------------------
 PUBLIC Validar_Movimiento
 PUBLIC Verificar_ReyEnJaque
 PUBLIC Verificar_JaqueMate
 PUBLIC Verificar_Tablas
 PUBLIC Validar_Ataque
 
-; ---------------------------------------------------------------------------
-; Segmento de datos local
-; ---------------------------------------------------------------------------
 .data
 
 piezaCapturadaTemp  BYTE 0
 
-; ===========================================================================
 .code
 
 
@@ -99,7 +71,7 @@ piezaCapturadaTemp  BYTE 0
 Validar_Movimiento PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 12                ; [ebp-4]=origen, [ebp-8]=destino, [ebp-12]=colorJugador
+    sub  esp, 12
     push ebx
     push ecx
     push edx
@@ -109,19 +81,16 @@ Validar_Movimiento PROC
     mov  DWORD PTR [ebp-4], eax
     mov  DWORD PTR [ebp-8], ebx
 
-    ; --- Verificar que origen no este vacio ---
     call Tablero_EstaVacia
     je   VM_Ilegal
 
-    ; --- Obtener pieza en origen ---
     mov  eax, [ebp-4]
     call Tablero_ObtenerPieza
-    movzx ecx, al               ; ECX = pieza
+    movzx ecx, al
 
-    ; --- Verificar que la pieza sea del jugador en turno ---
     mov  eax, [ebp-4]
     call Tablero_ObtenerColor
-    movzx edx, al               ; EDX = color pieza
+    movzx edx, al
     mov  DWORD PTR [ebp-12], edx
 
     call Tablero_ObtenerTurno
@@ -129,14 +98,12 @@ Validar_Movimiento PROC
     cmp  eax, edx
     jne  VM_Ilegal
 
-    ; --- Verificar que destino no sea pieza propia ---
     mov  eax, [ebp-8]
     call Tablero_ObtenerColor
     movzx eax, al
     cmp  eax, edx
     je   VM_Ilegal
 
-    ; --- Delegar segun tipo de pieza ---
     mov  eax, [ebp-4]
     mov  ebx, [ebp-8]
 
@@ -191,7 +158,6 @@ VM_PostValidar:
     cmp  al, 0
     je   VM_Ilegal
 
-    ; --- Simular y verificar que no deje al rey en jaque ---
     mov  eax, [ebp-4]
     mov  ebx, [ebp-8]
     call Simular_Y_VerificarJaque
@@ -218,8 +184,6 @@ Validar_Movimiento ENDP
 
 ; ===========================================================================
 ; Validar_PeonBlanco
-; EAX = origen, EBX = destino
-; Retorna: AL = 1 legal, 0 ilegal
 ; ===========================================================================
 Validar_PeonBlanco PROC
     push ecx
@@ -232,10 +196,9 @@ Validar_PeonBlanco PROC
 
     mov  eax, esi
     call Tablero_IndiceACoord
-    movzx ecx, al               ; fila origen
-    movzx edx, ah               ; columna origen
+    movzx ecx, al
+    movzx edx, ah
 
-    ; ---- Avance simple (destino = origen - 8) ----
     mov  eax, esi
     sub  eax, 8
     cmp  eax, edi
@@ -248,7 +211,6 @@ Validar_PeonBlanco PROC
     jmp  PeonB_Fin
 
 PeonB_AvanceDoble:
-    ; Solo desde fila 2: indices 48-55
     cmp  esi, 48
     jb   PeonB_Captura
     cmp  esi, 55
@@ -271,12 +233,10 @@ PeonB_AvanceDoble:
     jmp  PeonB_Fin
 
 PeonB_Captura:
-    ; Obtener columna destino
     mov  eax, edi
     call Tablero_IndiceACoord
-    movzx eax, ah               ; EAX = columna destino
+    movzx eax, ah
 
-    ; Diagonal izquierda (origen - 9): col_dest = col_orig - 1
     mov  ecx, edx
     dec  ecx
     cmp  eax, ecx
@@ -295,7 +255,6 @@ PeonB_Captura:
     jmp  PeonB_Fin
 
 PeonB_CapDer:
-    ; Diagonal derecha (origen - 7): col_dest = col_orig + 1
     mov  ecx, edx
     inc  ecx
     cmp  eax, ecx
@@ -327,8 +286,6 @@ Validar_PeonBlanco ENDP
 
 ; ===========================================================================
 ; Validar_PeonNegro
-; EAX = origen, EBX = destino
-; Retorna: AL = 1 legal, 0 ilegal
 ; ===========================================================================
 Validar_PeonNegro PROC
     push ecx
@@ -344,7 +301,6 @@ Validar_PeonNegro PROC
     movzx ecx, al
     movzx edx, ah
 
-    ; Avance simple (destino = origen + 8)
     mov  eax, esi
     add  eax, 8
     cmp  eax, edi
@@ -357,7 +313,6 @@ Validar_PeonNegro PROC
     jmp  PeonN_Fin
 
 PeonN_AvanceDoble:
-    ; Solo desde fila 7: indices 8-15
     cmp  esi, 8
     jb   PeonN_Captura
     cmp  esi, 15
@@ -382,9 +337,8 @@ PeonN_AvanceDoble:
 PeonN_Captura:
     mov  eax, edi
     call Tablero_IndiceACoord
-    movzx eax, ah               ; col destino
+    movzx eax, ah
 
-    ; Diagonal izquierda (origen + 7): col - 1
     mov  ecx, edx
     dec  ecx
     cmp  eax, ecx
@@ -403,7 +357,6 @@ PeonN_Captura:
     jmp  PeonN_Fin
 
 PeonN_CapDer:
-    ; Diagonal derecha (origen + 9): col + 1
     mov  ecx, edx
     inc  ecx
     cmp  eax, ecx
@@ -437,11 +390,13 @@ Validar_PeonNegro ENDP
 ; Validar_Torre
 ; EAX = origen, EBX = destino
 ; Retorna: AL = 1 legal, 0 ilegal
+;
+; FIX: Cada llamada a Tablero_EstaVacia preserva cursor y limites.
 ; ===========================================================================
 Validar_Torre PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 8                 ; [ebp-4]=origen, [ebp-8]=destino
+    sub  esp, 8
     push ecx
     push edx
     push esi
@@ -450,91 +405,91 @@ Validar_Torre PROC
     mov  DWORD PTR [ebp-4], eax
     mov  DWORD PTR [ebp-8], ebx
 
-    ; Coordenadas origen
     call Tablero_IndiceACoord
-    movzx ecx, al               ; fila origen
-    movzx edx, ah               ; col origen
+    movzx ecx, al
+    movzx edx, ah
 
-    ; Coordenadas destino
     push ecx
     push edx
     mov  eax, [ebp-8]
     call Tablero_IndiceACoord
-    movzx esi, al               ; fila destino
-    movzx edi, ah               ; col destino
-    pop  edx                    ; col origen
-    pop  ecx                    ; fila origen
+    movzx esi, al
+    movzx edi, ah
+    pop  edx
+    pop  ecx
 
-    ; Misma fila?
     cmp  ecx, esi
     je   Torre_MismaFila
-    ; Misma columna?
     cmp  edx, edi
     je   Torre_MismaColumna
     jmp  Torre_Ilegal
 
 Torre_MismaFila:
-    ; Horizontal: verificar celdas intermedias
-    mov  eax, [ebp-4]          ; origen
-    mov  ebx, [ebp-8]          ; destino
+    mov  eax, [ebp-4]
+    mov  ebx, [ebp-8]
     cmp  eax, ebx
     jb   Torre_HorizDer
-    ; Izquierda: destino < origen
-    mov  ecx, ebx               ; cursor = destino
+
+    mov  ecx, ebx
 Torre_HorizIzqLoop:
     inc  ecx
-    cmp  ecx, eax               ; llegamos a origen?
+    cmp  ecx, eax
     jge  Torre_Legal
     push eax
+    push ecx
     mov  eax, ecx
     call Tablero_EstaVacia
+    pop  ecx
     pop  eax
     jne  Torre_Ilegal
     jmp  Torre_HorizIzqLoop
 
 Torre_HorizDer:
-    ; Derecha: origen < destino
-    mov  ecx, eax               ; cursor = origen
+    mov  ecx, eax
 Torre_HorizDerLoop:
     inc  ecx
-    cmp  ecx, ebx               ; llegamos a destino?
+    cmp  ecx, ebx
     jge  Torre_Legal
     push ebx
+    push ecx
     mov  eax, ecx
     call Tablero_EstaVacia
+    pop  ecx
     pop  ebx
     jne  Torre_Ilegal
     jmp  Torre_HorizDerLoop
 
 Torre_MismaColumna:
-    ; Vertical: paso +-8
     mov  eax, [ebp-4]
     mov  ebx, [ebp-8]
     cmp  eax, ebx
     jb   Torre_VertAbajo
-    ; Arriba: destino < origen (indice menor = fila visual mas alta)
+
     mov  ecx, ebx
 Torre_VertArribaLoop:
     add  ecx, 8
     cmp  ecx, eax
     jge  Torre_Legal
     push eax
+    push ecx
     mov  eax, ecx
     call Tablero_EstaVacia
+    pop  ecx
     pop  eax
     jne  Torre_Ilegal
     jmp  Torre_VertArribaLoop
 
 Torre_VertAbajo:
-    ; Abajo: origen < destino
     mov  ecx, eax
 Torre_VertAbajoLoop:
     add  ecx, 8
     cmp  ecx, ebx
     jge  Torre_Legal
     push ebx
+    push ecx
     mov  eax, ecx
     call Tablero_EstaVacia
+    pop  ecx
     pop  ebx
     jne  Torre_Ilegal
     jmp  Torre_VertAbajoLoop
@@ -559,8 +514,6 @@ Validar_Torre ENDP
 
 ; ===========================================================================
 ; Validar_Caballo
-; EAX = origen, EBX = destino
-; Retorna: AL = 1 legal, 0 ilegal
 ; ===========================================================================
 Validar_Caballo PROC
     push ecx
@@ -571,39 +524,34 @@ Validar_Caballo PROC
     mov  esi, eax
     mov  edi, ebx
 
-    ; Coordenadas origen
     mov  eax, esi
     call Tablero_IndiceACoord
-    movzx ecx, al               ; fila origen
-    movzx edx, ah               ; col origen
+    movzx ecx, al
+    movzx edx, ah
 
-    ; Coordenadas destino
     push ecx
     push edx
     mov  eax, edi
     call Tablero_IndiceACoord
-    movzx esi, al               ; fila destino
-    movzx edi, ah               ; col destino
-    pop  edx                    ; col origen
-    pop  ecx                    ; fila origen
+    movzx esi, al
+    movzx edi, ah
+    pop  edx
+    pop  ecx
 
-    ; |dFila|
     mov  eax, esi
     sub  eax, ecx
     jns  Cab_PosFila
     neg  eax
 Cab_PosFila:
-    mov  esi, eax               ; ESI = |dFila|
+    mov  esi, eax
 
-    ; |dCol|
     mov  eax, edi
     sub  eax, edx
     jns  Cab_PosCol
     neg  eax
 Cab_PosCol:
-    mov  edi, eax               ; EDI = |dCol|
+    mov  edi, eax
 
-    ; L: (1,2) o (2,1)
     cmp  esi, 1
     jne  Cab_Ver2
     cmp  edi, 2
@@ -632,10 +580,10 @@ Validar_Caballo ENDP
 
 
 ; ===========================================================================
-; Validar_Alfil_Completo — REESCRITO COMPLETAMENTE
+; Validar_Alfil_Completo
 ;
-; Usa variables locales de pila para indices, evitando que se pierdan
-; cuando Tablero_IndiceACoord sobreescribe registros.
+; FIX CRITICO: push eax / pop eax alrededor de Tablero_EstaVacia
+;   para preservar el cursor del recorrido diagonal.
 ;
 ; EAX = origen, EBX = destino
 ; Retorna: AL = 1 legal, 0 ilegal
@@ -643,84 +591,73 @@ Validar_Caballo ENDP
 Validar_Alfil_Completo PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 24                ; variables locales:
-                                ; [ebp-4]  = indice origen
-                                ; [ebp-8]  = indice destino
-                                ; [ebp-12] = fila origen
-                                ; [ebp-16] = col origen
-                                ; [ebp-20] = fila destino
-                                ; [ebp-24] = col destino
+    sub  esp, 24
     push ebx
     push ecx
     push edx
     push esi
     push edi
 
-    ; --- Guardar indices INMEDIATAMENTE ---
     mov  [ebp-4], eax
     mov  [ebp-8], ebx
 
-    ; --- Coordenadas origen ---
-    call Tablero_IndiceACoord   ; EAX ya tiene origen
+    call Tablero_IndiceACoord
     movzx ecx, al
     movzx edx, ah
-    mov  [ebp-12], ecx          ; fila origen
-    mov  [ebp-16], edx          ; col origen
+    mov  [ebp-12], ecx
+    mov  [ebp-16], edx
 
-    ; --- Coordenadas destino ---
     mov  eax, [ebp-8]
     call Tablero_IndiceACoord
     movzx ecx, al
     movzx edx, ah
-    mov  [ebp-20], ecx          ; fila destino
-    mov  [ebp-24], edx          ; col destino
+    mov  [ebp-20], ecx
+    mov  [ebp-24], edx
 
-    ; --- dFila = fila_dest - fila_orig ---
+    ; dFila = fila_dest - fila_orig
     mov  eax, [ebp-20]
     sub  eax, [ebp-12]
-    mov  esi, eax               ; ESI = dFila (con signo)
+    mov  esi, eax
 
-    ; --- dCol = col_dest - col_orig ---
+    ; dCol = col_dest - col_orig
     mov  eax, [ebp-24]
     sub  eax, [ebp-16]
-    mov  edi, eax               ; EDI = dCol (con signo)
+    mov  edi, eax
 
-    ; --- |dFila| == |dCol| y != 0 ---
+    ; |dFila| == |dCol| y != 0
     mov  eax, esi
     jns  A2_AbsFila
     neg  eax
 A2_AbsFila:
-    mov  ecx, eax               ; ECX = |dFila|
+    mov  ecx, eax
 
     mov  eax, edi
     jns  A2_AbsCol
     neg  eax
-A2_AbsCol:                      ; EAX = |dCol|
+A2_AbsCol:
 
     cmp  ecx, eax
     jne  A2_Ilegal
     cmp  ecx, 0
     je   A2_Ilegal
 
-; --- Calcular paso diagonal usando INDICES directamente ---
-    ; Si destino < origen -> indice baja -> paso -8
-    ; Si destino > origen -> indice sube -> paso +8
+    ; --- Calcular paso diagonal usando INDICES directamente ---
     xor  ecx, ecx
-    mov  eax, [ebp-8]          ; destino
-    cmp  eax, [ebp-4]          ; vs origen
+    mov  eax, [ebp-8]
+    cmp  eax, [ebp-4]
     jl   A2_FilaArriba
-    add  ecx, 8                ; dest > orig: indice sube (+8)
+    add  ecx, 8
     jmp  A2_VerCol
 A2_FilaArriba:
-    sub  ecx, 8                ; dest < orig: indice baja (-8)
+    sub  ecx, 8
 
 A2_VerCol:
     cmp  edi, 0
     jg   A2_ColDer
-    dec  ecx                    ; dCol < 0: indice -1
+    dec  ecx
     jmp  A2_Recorrer
 A2_ColDer:
-    inc  ecx                    ; dCol > 0: indice +1
+    inc  ecx
 
 A2_Recorrer:
     ; ECX = paso diagonal
@@ -736,11 +673,14 @@ A2_BucleRecorrido:
     cmp  eax, BOARD_SIZE
     jae  A2_Ilegal
 
+    ; FIX CRITICO: preservar EAX (cursor), ECX (paso), EBX (destino)
+    push eax
     push ecx
     push ebx
     call Tablero_EstaVacia
     pop  ebx
     pop  ecx
+    pop  eax                    ; EAX restaurado = cursor intacto
     jne  A2_Ilegal              ; casilla intermedia ocupada
     jmp  A2_BucleRecorrido
 
@@ -764,20 +704,12 @@ Validar_Alfil_Completo ENDP
 
 
 ; ===========================================================================
-; Validar_Reina — REESCRITO COMPLETAMENTE
-;
-; La reina combina torre + alfil.
-; Usa variables locales de pila para no perder datos con cdq/div.
-;
-; EAX = origen, EBX = destino
-; Retorna: AL = 1 legal, 0 ilegal
+; Validar_Reina
 ; ===========================================================================
 Validar_Reina PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 24                ; [ebp-4]=origen, [ebp-8]=destino
-                                ; [ebp-12]=filaOrig, [ebp-16]=colOrig
-                                ; [ebp-20]=filaDest, [ebp-24]=colDest
+    sub  esp, 24
     push ebx
     push ecx
     push edx
@@ -787,14 +719,12 @@ Validar_Reina PROC
     mov  [ebp-4], eax
     mov  [ebp-8], ebx
 
-    ; --- Coordenadas origen ---
     call Tablero_IndiceACoord
     movzx ecx, al
     movzx edx, ah
     mov  [ebp-12], ecx
     mov  [ebp-16], edx
 
-    ; --- Coordenadas destino ---
     mov  eax, [ebp-8]
     call Tablero_IndiceACoord
     movzx ecx, al
@@ -802,7 +732,6 @@ Validar_Reina PROC
     mov  [ebp-20], ecx
     mov  [ebp-24], edx
 
-    ; --- Misma fila o misma columna? -> Torre ---
     mov  eax, [ebp-12]
     cmp  eax, [ebp-20]
     je   Reina_ComoTorre
@@ -810,24 +739,22 @@ Validar_Reina PROC
     cmp  eax, [ebp-24]
     je   Reina_ComoTorre
 
-    ; --- Diagonal? |dFila| == |dCol| ---
     mov  eax, [ebp-20]
-    sub  eax, [ebp-12]         ; dFila
+    sub  eax, [ebp-12]
     jns  Reina_AbsFila
     neg  eax
 Reina_AbsFila:
-    mov  esi, eax               ; ESI = |dFila|
+    mov  esi, eax
 
     mov  eax, [ebp-24]
-    sub  eax, [ebp-16]         ; dCol
+    sub  eax, [ebp-16]
     jns  Reina_AbsCol
     neg  eax
-Reina_AbsCol:                  ; EAX = |dCol|
+Reina_AbsCol:
 
     cmp  esi, eax
     jne  Reina_Ilegal
 
-    ; Es diagonal -> Alfil
     mov  eax, [ebp-4]
     mov  ebx, [ebp-8]
     call Validar_Alfil_Completo
@@ -856,8 +783,6 @@ Validar_Reina ENDP
 
 ; ===========================================================================
 ; Validar_Rey
-; EAX = origen, EBX = destino
-; Retorna: AL = 1 legal, 0 ilegal
 ; ===========================================================================
 Validar_Rey PROC
     push ecx
@@ -868,43 +793,38 @@ Validar_Rey PROC
     mov  esi, eax
     mov  edi, ebx
 
-    ; Coordenadas origen
     call Tablero_IndiceACoord
     movzx ecx, al
     movzx edx, ah
 
-    ; Coordenadas destino
     push ecx
     push edx
     mov  eax, edi
     call Tablero_IndiceACoord
-    movzx esi, al               ; fila destino
-    movzx edi, ah               ; col destino
-    pop  edx                    ; col origen
-    pop  ecx                    ; fila origen
+    movzx esi, al
+    movzx edi, ah
+    pop  edx
+    pop  ecx
 
-    ; |dFila|
     mov  eax, esi
     sub  eax, ecx
     jns  Rey_PosFila
     neg  eax
 Rey_PosFila:
-    mov  esi, eax               ; ESI = |dFila|
+    mov  esi, eax
 
-    ; |dCol|
     mov  eax, edi
     sub  eax, edx
     jns  Rey_PosCol
     neg  eax
 Rey_PosCol:
-    mov  edi, eax               ; EDI = |dCol|
+    mov  edi, eax
 
     cmp  esi, 1
     ja   Rey_Ilegal
     cmp  edi, 1
     ja   Rey_Ilegal
 
-    ; No movimiento nulo
     mov  eax, esi
     add  eax, edi
     cmp  eax, 0
@@ -927,16 +847,16 @@ Validar_Rey ENDP
 
 ; ===========================================================================
 ; Simular_Y_VerificarJaque
-; Simula movimiento, verifica jaque propio, revierte.
-;
 ; EAX = origen, EBX = destino
-; Retorna: AL = 1 si rey NO queda en jaque (seguro)
-;          AL = 0 si rey SI queda en jaque (inseguro)
+; Retorna: AL = 1 si rey NO queda en jaque, 0 si SI
+;
+; FIX: resultado de jaque se guarda en [ebp-16] (variable de pila)
+;      en vez de CL, que podia ser destruido por llamadas posteriores.
 ; ===========================================================================
 Simular_Y_VerificarJaque PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 12                ; [ebp-4]=origen, [ebp-8]=destino, [ebp-12]=color
+    sub  esp, 16
     push ebx
     push ecx
     push edx
@@ -946,44 +866,37 @@ Simular_Y_VerificarJaque PROC
     mov  DWORD PTR [ebp-4], eax
     mov  DWORD PTR [ebp-8], ebx
 
-    ; Guardar pieza en destino
     mov  eax, [ebp-8]
     call Tablero_ObtenerPieza
     mov  piezaCapturadaTemp, al
 
-    ; Color del jugador que mueve
     mov  eax, [ebp-4]
     call Tablero_ObtenerColor
     movzx edx, al
     mov  DWORD PTR [ebp-12], edx
 
-    ; Realizar movimiento simulado
     mov  eax, [ebp-4]
     mov  ebx, [ebp-8]
     call Tablero_MoverPieza
 
-    ; Obtener posicion del rey del jugador que movio
     mov  eax, [ebp-12]
     call Tablero_ObtenerPosRey
     movzx eax, al
 
-    ; Verificar jaque
     mov  ebx, [ebp-12]
     call Verificar_ReyEnJaque
-    mov  cl, al                 ; CL = 1 si en jaque
+    movzx eax, al
+    mov  DWORD PTR [ebp-16], eax  ; guardar resultado en pila
 
-    ; --- REVERTIR: mover pieza de vuelta ---
-    mov  eax, [ebp-8]           ; destino -> origen
+    mov  eax, [ebp-8]
     mov  ebx, [ebp-4]
-    call Tablero_MoverPieza     ; esto actualiza posicion del rey si es rey
+    call Tablero_MoverPieza
 
-    ; Restaurar pieza capturada en destino
     mov  eax, [ebp-8]
     mov  bl, piezaCapturadaTemp
     call Tablero_EstablecerPieza
 
-    ; Retornar
-    cmp  cl, 1
+    cmp  DWORD PTR [ebp-16], 1
     je   SimJaque_Inseguro
     mov  al, 1
     jmp  SimJaque_Fin
@@ -997,7 +910,7 @@ SimJaque_Fin:
     pop  edx
     pop  ecx
     pop  ebx
-    add  esp, 12
+    add  esp, 16
     pop  ebp
     ret
 Simular_Y_VerificarJaque ENDP
@@ -1014,14 +927,13 @@ Verificar_ReyEnJaque PROC
     push esi
     push edi
 
-    mov  esi, eax               ; ESI = posicion del rey
-    mov  edi, ebx               ; EDI = color del rey
+    mov  esi, eax
+    mov  edi, ebx
 
-    ; Color enemigo
     mov  ecx, edi
     xor  ecx, 1
 
-    xor  edx, edx               ; EDX = indice casilla (0-63)
+    xor  edx, edx
 
 Jaque_Bucle:
     cmp  edx, BOARD_SIZE
@@ -1030,14 +942,13 @@ Jaque_Bucle:
     mov  eax, edx
     call Tablero_ObtenerColor
     movzx eax, al
-    cmp  eax, ecx               ; pieza enemiga?
+    cmp  eax, ecx
     jne  Jaque_Sig
 
-    ; Pieza enemiga en EDX: puede atacar al rey en ESI?
     push ecx
     push edx
-    mov  eax, edx               ; origen = pieza enemiga
-    mov  ebx, esi               ; destino = rey
+    mov  eax, edx
+    mov  ebx, esi
     call Validar_Ataque
     pop  edx
     pop  ecx
@@ -1066,17 +977,14 @@ Verificar_ReyEnJaque ENDP
 
 
 ; ===========================================================================
-; Validar_Ataque — CORREGIDO
-; Verifica si la pieza en origen puede atacar destino.
-; Para peones, ahora verifica columnas para evitar wrapping.
-;
+; Validar_Ataque
 ; EAX = origen (atacante), EBX = destino (rey)
 ; Retorna: AL = 1 si puede atacar, 0 si no
 ; ===========================================================================
 Validar_Ataque PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 8                 ; [ebp-4]=origen, [ebp-8]=destino
+    sub  esp, 8
     push ecx
     push edx
     push esi
@@ -1085,7 +993,6 @@ Validar_Ataque PROC
     mov  [ebp-4], eax
     mov  [ebp-8], ebx
 
-    ; Obtener pieza atacante
     call Tablero_ObtenerPieza
     movzx ecx, al
 
@@ -1119,13 +1026,10 @@ Validar_Ataque PROC
     jmp  Atq_No
 
 Atq_PeonB:
-    ; Peon blanco ataca diagonal: origen-7 (col+1) y origen-9 (col-1)
-    ; FIX: verificar columnas para evitar wrapping
     mov  eax, [ebp-4]
     call Tablero_IndiceACoord
-    movzx edx, ah               ; EDX = col origen del peon
+    movzx edx, ah
 
-    ; Ataque diagonal derecha (origen-7): col_orig < 7
     cmp  edx, 7
     jge  Atq_PeonB_Izq
     mov  eax, [ebp-4]
@@ -1134,7 +1038,6 @@ Atq_PeonB:
     je   Atq_Si
 
 Atq_PeonB_Izq:
-    ; Ataque diagonal izquierda (origen-9): col_orig > 0
     cmp  edx, 0
     jle  Atq_No
     mov  eax, [ebp-4]
@@ -1144,12 +1047,10 @@ Atq_PeonB_Izq:
     jmp  Atq_No
 
 Atq_PeonN:
-    ; Peon negro ataca diagonal: origen+7 (col-1) y origen+9 (col+1)
     mov  eax, [ebp-4]
     call Tablero_IndiceACoord
-    movzx edx, ah               ; EDX = col origen del peon
+    movzx edx, ah
 
-    ; Ataque diagonal izquierda (origen+7): col_orig > 0
     cmp  edx, 0
     jle  Atq_PeonN_Der
     mov  eax, [ebp-4]
@@ -1158,7 +1059,6 @@ Atq_PeonN:
     je   Atq_Si
 
 Atq_PeonN_Der:
-    ; Ataque diagonal derecha (origen+9): col_orig < 7
     cmp  edx, 7
     jge  Atq_No
     mov  eax, [ebp-4]
@@ -1223,30 +1123,28 @@ Validar_Ataque ENDP
 Verificar_JaqueMate PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 4                 ; [ebp-4] = color
+    sub  esp, 4
     push ecx
     push edx
     push esi
     push edi
 
     movzx eax, al
-    mov  [ebp-4], eax           ; guardar color
+    mov  [ebp-4], eax
 
-    ; Primero: esta en jaque?
     mov  eax, [ebp-4]
     call Tablero_ObtenerPosRey
     movzx eax, al
     mov  ebx, [ebp-4]
     call Verificar_ReyEnJaque
     cmp  al, 0
-    je   JM_No                  ; no hay jaque -> no puede ser jaque mate
+    je   JM_No
 
-    ; Segundo: tiene algun movimiento legal?
-    xor  edx, edx               ; EDX = origen
+    xor  edx, edx
 
 JM_BucleOrigen:
     cmp  edx, BOARD_SIZE
-    jae  JM_Si                  ; ningun movimiento -> jaque mate
+    jae  JM_Si
 
     mov  eax, edx
     call Tablero_ObtenerColor
@@ -1254,7 +1152,7 @@ JM_BucleOrigen:
     cmp  eax, [ebp-4]
     jne  JM_SigOrigen
 
-    xor  ecx, ecx               ; ECX = destino
+    xor  ecx, ecx
 
 JM_BucleDestino:
     cmp  ecx, BOARD_SIZE
@@ -1269,7 +1167,7 @@ JM_BucleDestino:
     pop  ecx
 
     cmp  al, 1
-    je   JM_No                  ; hay movimiento legal
+    je   JM_No
 
     inc  ecx
     jmp  JM_BucleDestino
@@ -1304,7 +1202,7 @@ Verificar_JaqueMate ENDP
 Verificar_Tablas PROC
     push ebp
     mov  ebp, esp
-    sub  esp, 4                 ; [ebp-4] = color
+    sub  esp, 4
     push ecx
     push edx
     push esi
@@ -1313,7 +1211,6 @@ Verificar_Tablas PROC
     movzx eax, al
     mov  [ebp-4], eax
 
-    ; Si esta en jaque, no son tablas
     mov  eax, [ebp-4]
     call Tablero_ObtenerPosRey
     movzx eax, al
@@ -1322,7 +1219,6 @@ Verificar_Tablas PROC
     cmp  al, 1
     je   Tab_No
 
-    ; Tiene algun movimiento legal?
     xor  edx, edx
 
 Tab_BucleOrigen:

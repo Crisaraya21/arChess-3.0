@@ -39,5 +39,8 @@
     <MASM Include="..\..\asm\ui_console.asm">
       <Filter>Archivos de origen</Filter>
     </MASM>
+    <MASM Include="..\..\asm\path_resolver.asm">
+      <Filter>Archivos de origen</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

@@ -64,6 +64,7 @@ Entrada_LeerOpcionMenu           PROTO
 Entrada_SolicitoPista            PROTO
 
 Sync_IniciarSesion               PROTO
+Sync_TerminarSesion              PROTO
 Sync_PublicarEstado              PROTO
 Sync_LeerEstadoRemoto            PROTO
 Sync_RegistrarMovimiento         PROTO
@@ -426,6 +427,10 @@ Bucle_SincronizarFin:
 
 Bucle_FinPartida:
     call UI_MostrarTablero
+    cmp  modoJuego, MODO_EN_LINEA
+    jne  FinPartida_NoOnline
+    call Sync_TerminarSesion
+FinPartida_NoOnline:
     call WaitMsg
     pop  ecx
     pop  ebx

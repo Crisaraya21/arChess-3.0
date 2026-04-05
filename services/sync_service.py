@@ -223,7 +223,7 @@ def descargar_estado(rol):
         estado_remoto = ref.get()
     except Exception as e:
         print(f"[SYNC] Error descargando de {ruta_lectura}: {e}")
-        return False
+        raise
 
     if not estado_remoto or not isinstance(estado_remoto, dict):
         return False

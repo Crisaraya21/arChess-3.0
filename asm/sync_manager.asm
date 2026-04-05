@@ -51,6 +51,7 @@ CreateProcessA PROTO,
 
 WaitForSingleObject PROTO, hHandle:DWORD, dwMilliseconds:DWORD
 CloseHandle PROTO, hObject:DWORD
+TerminateProcess PROTO, hProcess:DWORD, uExitCode:DWORD
 Sleep PROTO, dwMilliseconds:DWORD
 
 EXTERNDEF archivoGameId    : BYTE
@@ -105,6 +106,7 @@ msgSyncErr      BYTE "  [SYNC] Error de sincronizacion.", 0Dh, 0Ah, 0
 .code
 
 PUBLIC Sync_IniciarSesion
+PUBLIC Sync_TerminarSesion
 PUBLIC Sync_PublicarEstado
 PUBLIC Sync_LeerEstadoRemoto
 PUBLIC Sync_RegistrarMovimiento
@@ -208,6 +210,24 @@ IniciarSesion_Fin:
     pop  ebx
     ret
 Sync_IniciarSesion ENDP
+
+; ===========================================================================
+; Sync_TerminarSesion
+; Termina el proceso listener y libera su handle.
+; Llamar al salir del modo online.
+; ===========================================================================
+Sync_TerminarSesion PROC
+    push eax
+    cmp  listenProcHandle, 0
+    je   TermSesion_Fin
+    INVOKE TerminateProcess, listenProcHandle, 0
+    INVOKE CloseHandle, listenProcHandle
+    mov  listenProcHandle, 0
+    mov  syncActiva, 0
+TermSesion_Fin:
+    pop  eax
+    ret
+Sync_TerminarSesion ENDP
 
 Sync_PublicarEstado PROC
     push ebx
@@ -318,6 +338,10 @@ Sync_LanzarProceso PROC
     cmp  eax, 0
     je   LanzarProc_Error
     INVOKE WaitForSingleObject, procInf.piProcess, PROCESS_TIMEOUT_MS
+    cmp  eax, 0                         ; WAIT_OBJECT_0 = proceso termino ok
+    je   LanzarProc_Cerrar
+    INVOKE TerminateProcess, procInf.piProcess, 1  ; timeout: matar proceso
+LanzarProc_Cerrar:
     INVOKE CloseHandle, procInf.piThread
     INVOKE CloseHandle, procInf.piProcess
     mov  al, 1

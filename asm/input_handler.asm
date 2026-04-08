@@ -27,7 +27,7 @@ PUBLIC uiMoveCount
 uiMoveHistory    BYTE 512 DUP(0)   ; 5 bytes por mov, max 102 movs
 uiMoveCount      DWORD 0
 
-promptMov    BYTE "> Mov (e2e4) s=estilo h=pista: ",0
+promptMov    BYTE "> Mov (e2e4) s=estilo i=pista: ",0
 strLightMsg  BYTE "[CLASICO]",0
 strDarkMsg   BYTE "[OSCURO] ",0
 msgInvalido  BYTE "  Entrada invalida, intente de nuevo.   ",0
@@ -165,10 +165,10 @@ UCI_ToggleDone:
 
 UCI_NoToggle:
     ; 'h' pista
-    cmp  al, 'h'
+    cmp  al, 'i'
     jne  UCI_LeerResto
     call WriteChar
-    mov  BYTE PTR [esi], 'h'
+    mov  BYTE PTR [esi], 'i'
     mov  BYTE PTR [esi+1], 0
     mov  al, 0
     ret

@@ -334,8 +334,8 @@ Bucle_LeerMovimiento:
     cmp  al, 0
     jne  Bucle_ValidarMovimiento
 
-    ; AL=0: revisar si fue 'h' (pista) o 's' (estilo)
-    cmp  BYTE PTR bufferMovUCI, 'h'
+    ; AL=0: revisar si fue 'i' (pista) o 's' (estilo)
+    cmp  BYTE PTR bufferMovUCI, 'i'
     je   Bucle_PistaDirecta
     jmp  Bucle_Inicio
 

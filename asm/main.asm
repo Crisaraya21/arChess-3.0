@@ -10,6 +10,11 @@
 ; FIX PISTA:
 ;   - Tecla 'h' se detecta despues de leer input (no con SolicitoPista)
 ;   - WaitMsg despues de mostrar pista para que el usuario la vea
+;
+; FIX ONLINE:
+;   - EsperarRivalSiCorresponde ahora compara turno con rol del cliente
+;   - Cliente A solo juega en turno de blancas, Cliente B en turno de negras
+;   - Esto evita que ambos jugadores muevan al mismo tiempo
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -293,7 +298,7 @@ Bucle_Inicio:
     call UI_MostrarJaque
 
 Bucle_SinJaque:
-    ; --- Modo online: esperar rival ---
+    ; --- Modo online: esperar rival si no es mi turno ---
     cmp  modoJuego, MODO_EN_LINEA
     jne  Bucle_EscogerFuente
     call Principal_EsperarRivalSiCorresponde
@@ -522,22 +527,18 @@ Principal_TurnoIA ENDP
 
 
 ; ===========================================================================
-; Main_RegistrarMovEnHistorial - Agrega bufferMovUCI al historial visual
-;   Escribe en uiMoveHistory (de input_handler.asm) para que la UI
-;   lo muestre. Equivale a Inp_RegistrarMov pero llamable desde main.
+; Main_RegistrarMovEnHistorial
 ; ===========================================================================
 Main_RegistrarMovEnHistorial PROC
     push eax
     push ebx
     push esi
 
-    ; offset = uiMoveCount * 5
     mov  eax, uiMoveCount
     imul eax, 5
     lea  ebx, uiMoveHistory
     add  ebx, eax
 
-    ; copiar 4 chars de bufferMovUCI + null
     lea  esi, bufferMovUCI
     mov  al, BYTE PTR [esi+0]
     mov  BYTE PTR [ebx+0], al
@@ -682,23 +683,55 @@ Principal_ManejarPista ENDP
 
 ; ===========================================================================
 ; Principal_EsperarRivalSiCorresponde
+;
+; FIX ONLINE: Ahora compara el turno actual con el rol del cliente.
+;   Cliente A ('a') juega blancas (turno 0)
+;   Cliente B ('b') juega negras  (turno 1)
+;
+;   Si el turno actual corresponde a MI rol -> retorna 0 (jugar local)
+;   Si el turno actual es del RIVAL -> espera polling hasta que llegue
+;
+; Retorna: AL = 1 si el rival jugo (movimiento aplicado)
+;          AL = 0 si es mi turno (debo jugar yo)
 ; ===========================================================================
 Principal_EsperarRivalSiCorresponde PROC
     push ebx
     push ecx
     push esi
     push edi
+
+    ; Obtener turno actual
     call Tablero_ObtenerTurno
-    cmp  al, COLOR_NEGRO
-    jne  Esperar_EsTurnoLocal
+    movzx eax, al               ; EAX = 0 (blancas) o 1 (negras)
+
+    ; Determinar si es MI turno segun mi rol
+    cmp  syncRolCliente, 'b'
+    je   Esperar_SoyB
+
+    ; --- Soy Cliente A: juego blancas (turno 0) ---
+    cmp  eax, COLOR_BLANCO
+    je   Esperar_EsTurnoLocal    ; turno blancas = mi turno = jugar
+    jmp  Esperar_EsperarRival    ; turno negras = rival = esperar
+
+Esperar_SoyB:
+    ; --- Soy Cliente B: juego negras (turno 1) ---
+    cmp  eax, COLOR_NEGRO
+    je   Esperar_EsTurnoLocal    ; turno negras = mi turno = jugar
+    ; turno blancas = rival = esperar (cae al polling)
+
+Esperar_EsperarRival:
+    ; Mostrar tablero y mensaje de espera
     call UI_LimpiarPantalla
     call UI_MostrarTablero
     mov  edx, OFFSET msgEsperandoRival
     call WriteString
+
 Esperar_PollLoop:
     call Sync_VerificarActualizacion
     cmp  al, 1
     jne  Esperar_PollLoop
+
+    ; Llego actualizacion del rival
     call Sync_LeerEstadoRemoto
     lea  esi, syncLastMove
     lea  edi, bufferMovUCI
@@ -711,14 +744,17 @@ Esperar_PollLoop:
     mov  al, [esi+3]
     mov  [edi+3], al
     mov  BYTE PTR [edi+4], 0
+
     call Principal_ParsearUCI
     cmp  al, 0
     je   Esperar_ErrorRemoto
+
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Validar_Movimiento
     cmp  al, 0
     je   Esperar_ErrorRemoto
+
     mov  eax, indiceOrigen
     mov  ebx, indiceDestino
     call Tablero_MoverPieza
@@ -728,12 +764,19 @@ Esperar_PollLoop:
     call Tablero_EjecutarEnroque
 
     call Sync_RegistrarMovimiento
+
+    ; Registrar movimiento del rival en historial visual
+    call Main_RegistrarMovEnHistorial
+
     mov  al, 1
     jmp  Esperar_Fin
+
 Esperar_ErrorRemoto:
     jmp  Esperar_PollLoop
+
 Esperar_EsTurnoLocal:
     mov  al, 0
+
 Esperar_Fin:
     pop  edi
     pop  esi

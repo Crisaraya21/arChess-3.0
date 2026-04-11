@@ -3,16 +3,22 @@
   "WorkspaceRootPath": "C:\\arChess-3.0\\arChess\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\ui_console.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\input_handler.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\main.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\move_validator.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\engine_connector.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\sync_manager.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\ui_console.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{41AF140A-3143-4C05-93D9-BBC7C5E0AC37}|arChess\\arChess.vcxproj|C:\\arChess-3.0\\asm\\file_manager.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
@@ -52,7 +58,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 333,
-          "SelectedChildIndex": 3,
+          "SelectedChildIndex": 4,
           "Children": [
             {
               "$type": "Bookmark",
@@ -60,7 +66,33 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 1,
+              "Title": "input_handler.asm",
+              "DocumentMoniker": "C:\\arChess-3.0\\asm\\input_handler.asm",
+              "RelativeDocumentMoniker": "..\\asm\\input_handler.asm",
+              "ToolTip": "C:\\arChess-3.0\\asm\\input_handler.asm",
+              "RelativeToolTip": "..\\asm\\input_handler.asm",
+              "ViewState": "AgIAAOsAAAAAAAAAAAAqwAMBAAADAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-04-11T21:57:11.545Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "move_validator.asm",
+              "DocumentMoniker": "C:\\arChess-3.0\\asm\\move_validator.asm",
+              "RelativeDocumentMoniker": "..\\asm\\move_validator.asm",
+              "ToolTip": "C:\\arChess-3.0\\asm\\move_validator.asm",
+              "RelativeToolTip": "..\\asm\\move_validator.asm",
+              "ViewState": "AgIAAHkFAAAAAAAAAAAqwIEFAAAMAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-04-11T21:53:40.054Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
               "Title": "file_manager.asm",
               "DocumentMoniker": "C:\\arChess-3.0\\asm\\file_manager.asm",
               "RelativeDocumentMoniker": "..\\asm\\file_manager.asm",
@@ -68,38 +100,37 @@
               "RelativeToolTip": "..\\asm\\file_manager.asm",
               "ViewState": "AgIAAJoCAAAAAAAAAAAWwKgCAAARAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-03-29T21:06:52.624Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-29T21:06:52.624Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 0,
               "Title": "ui_console.asm",
               "DocumentMoniker": "C:\\arChess-3.0\\asm\\ui_console.asm",
               "RelativeDocumentMoniker": "..\\asm\\ui_console.asm",
               "ToolTip": "C:\\arChess-3.0\\asm\\ui_console.asm",
               "RelativeToolTip": "..\\asm\\ui_console.asm",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAD0CAAADAAAAAAAAAA==",
+              "ViewState": "AgIAACIDAAAAAAAAAAAAADMDAAAXAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
               "WhenOpened": "2026-03-29T19:44:24.82Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
               "Title": "main.asm",
               "DocumentMoniker": "C:\\arChess-3.0\\asm\\main.asm",
               "RelativeDocumentMoniker": "..\\asm\\main.asm",
               "ToolTip": "C:\\arChess-3.0\\asm\\main.asm",
               "RelativeToolTip": "..\\asm\\main.asm",
-              "ViewState": "AgIAAIkCAAAAAAAAAAAswKICAAAIAAAAAAAAAA==",
+              "ViewState": "AgIAAAABAAAAAAAAAAAawAwBAAAEAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
               "WhenOpened": "2026-03-29T19:41:47.809Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 4,
               "Title": "engine_connector.asm",
               "DocumentMoniker": "C:\\arChess-3.0\\asm\\engine_connector.asm",
               "RelativeDocumentMoniker": "..\\asm\\engine_connector.asm",
@@ -107,12 +138,11 @@
               "RelativeToolTip": "..\\asm\\engine_connector.asm",
               "ViewState": "AgIAALgBAAAAAAAAAAAswNEBAAADAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-03-29T19:33:25.952Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-29T19:33:25.952Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 5,
               "Title": "sync_manager.asm",
               "DocumentMoniker": "C:\\arChess-3.0\\asm\\sync_manager.asm",
               "RelativeDocumentMoniker": "..\\asm\\sync_manager.asm",
@@ -120,12 +150,11 @@
               "RelativeToolTip": "..\\asm\\sync_manager.asm",
               "ViewState": "AgIAAEEAAAAAAAAAAAAvwFUAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-03-29T19:09:11.32Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-29T19:09:11.32Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 8,
               "Title": "masm.targets",
               "DocumentMoniker": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Microsoft\\VC\\v170\\BuildCustomizations\\masm.targets",
               "RelativeDocumentMoniker": "..\\..\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Microsoft\\VC\\v170\\BuildCustomizations\\masm.targets",
@@ -137,7 +166,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 7,
               "Title": "ui_console.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\ui_console.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\ui_console.asm",
@@ -149,7 +178,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 9,
               "Title": "move_validator.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\move_validator.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\move_validator.asm",
@@ -161,7 +190,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 10,
               "Title": "input_handler.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\input_handler.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\input_handler.asm",
@@ -173,7 +202,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 11,
               "Title": "file_manager.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\file_manager.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\file_manager.asm",
@@ -185,7 +214,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 12,
               "Title": "engine_connector.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\engine_connector.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\engine_connector.asm",
@@ -197,7 +226,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
+              "DocumentIndex": 13,
               "Title": "board.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\board.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\board.asm",
@@ -209,7 +238,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 12,
+              "DocumentIndex": 14,
               "Title": "main.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\main.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\main.asm",
@@ -221,7 +250,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 15,
               "Title": "sync_manager.asm",
               "DocumentMoniker": "C:\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\sync_manager.asm",
               "RelativeDocumentMoniker": "..\\..\\Users\\Usuario\\OneDrive\\Desktop\\II Semestre\\arChess-3.0\\asm\\sync_manager.asm",

@@ -1284,4 +1284,136 @@ Tab_Fin:
     ret
 Verificar_Tablas ENDP
 
+; ===========================================================================
+; AGREGAR ESTE BLOQUE AL FINAL DE move_validator.asm, ANTES de END
+; ===========================================================================
+; Verificar_MaterialInsuficiente
+; Detecta si no hay suficiente material para dar mate:
+;   - Rey vs Rey
+;   - Rey+Alfil vs Rey
+;   - Rey+Caballo vs Rey
+; Retorna: AL = 1 si material insuficiente (tablas), 0 si hay material
+; ===========================================================================
+PUBLIC Verificar_MaterialInsuficiente
+
+Verificar_MaterialInsuficiente PROC
+    push ebp
+    mov  ebp, esp
+    sub  esp, 20          ; variables locales
+    push ebx
+    push ecx
+    push edx
+    push esi
+
+    ; [ebp-4]  = contPiezasBlancas (sin rey)
+    ; [ebp-8]  = contPiezasNegras (sin rey)
+    ; [ebp-12] = tieneAlfilB (blanco tiene alfil)
+    ; [ebp-16] = tieneCaballoB (blanco tiene caballo)
+    ; [ebp-20] = tieneAlfilN/tieneCaballoN
+
+    mov  DWORD PTR [ebp-4],  0
+    mov  DWORD PTR [ebp-8],  0
+    mov  DWORD PTR [ebp-12], 0
+    mov  DWORD PTR [ebp-16], 0
+    mov  DWORD PTR [ebp-20], 0
+
+    xor  edx, edx          ; indice del tablero
+
+MI_Bucle:
+    cmp  edx, BOARD_SIZE
+    jae  MI_Evaluar
+
+    push edx
+    mov  eax, edx
+    call Tablero_ObtenerPieza
+    movzx ecx, al
+    pop  edx
+
+    cmp  ecx, EMPTY
+    je   MI_Siguiente
+
+    ; Ignorar reyes
+    cmp  ecx, REY_BLANCO
+    je   MI_Siguiente
+    cmp  ecx, REY_NEGRO
+    je   MI_Siguiente
+
+    ; Si hay peon, torre o reina de cualquier color = material suficiente
+    cmp  ecx, PEON_BLANCO
+    je   MI_Suficiente
+    cmp  ecx, PEON_NEGRO
+    je   MI_Suficiente
+    cmp  ecx, TORRE_BLANCA
+    je   MI_Suficiente
+    cmp  ecx, TORRE_NEGRA
+    je   MI_Suficiente
+    cmp  ecx, REINA_BLANCA
+    je   MI_Suficiente
+    cmp  ecx, REINA_NEGRA
+    je   MI_Suficiente
+
+    ; Contar piezas menores
+    cmp  ecx, ALFIL_BLANCO
+    jne  MI_NoBlancoAlfil
+    inc  DWORD PTR [ebp-4]
+    mov  DWORD PTR [ebp-12], 1
+    jmp  MI_Siguiente
+MI_NoBlancoAlfil:
+    cmp  ecx, CABALLO_BLANCO
+    jne  MI_NoBlancoCaballo
+    inc  DWORD PTR [ebp-4]
+    mov  DWORD PTR [ebp-16], 1
+    jmp  MI_Siguiente
+MI_NoBlancoCaballo:
+    cmp  ecx, ALFIL_NEGRO
+    jne  MI_NoNegroAlfil
+    inc  DWORD PTR [ebp-8]
+    mov  DWORD PTR [ebp-20], 1
+    jmp  MI_Siguiente
+MI_NoNegroAlfil:
+    cmp  ecx, CABALLO_NEGRO
+    jne  MI_Siguiente
+    inc  DWORD PTR [ebp-8]
+    mov  DWORD PTR [ebp-20], 1
+
+MI_Siguiente:
+    inc  edx
+    jmp  MI_Bucle
+
+MI_Evaluar:
+    ; Caso 1: Rey vs Rey (ambos contadores = 0)
+    mov  eax, [ebp-4]
+    add  eax, [ebp-8]
+    cmp  eax, 0
+    je   MI_Insuficiente
+
+    ; Caso 2: Rey+pieza_menor vs Rey (un lado tiene 1 pieza menor, otro 0)
+    cmp  DWORD PTR [ebp-4], 1
+    jne  MI_VerNegras
+    cmp  DWORD PTR [ebp-8], 0
+    je   MI_Insuficiente
+
+MI_VerNegras:
+    cmp  DWORD PTR [ebp-8], 1
+    jne  MI_Suficiente
+    cmp  DWORD PTR [ebp-4], 0
+    je   MI_Insuficiente
+
+MI_Suficiente:
+    mov  al, 0
+    jmp  MI_Fin
+
+MI_Insuficiente:
+    mov  al, 1
+
+MI_Fin:
+    pop  esi
+    pop  edx
+    pop  ecx
+    pop  ebx
+    add  esp, 20
+    pop  ebp
+    ret
+Verificar_MaterialInsuficiente ENDP
+
 END

@@ -1,7 +1,5 @@
 ; ===========================================================
 ;  input_handler.asm  -  arChess 3.0
-;  FIX: historial registrado aqui (PUBLIC para ui_console)
-;       mensajes de error en zona de prompt, no en tablero
 ; ===========================================================
 
 INCLUDE Irvine32.inc
@@ -9,9 +7,14 @@ INCLUDE Irvine32.inc
 STYLE_LIGHT EQU 0
 STYLE_DARK  EQU 1
 
-; Fila fija del prompt (debajo del tablero y status)
 PROMPT_ROW  EQU 23
 PROMPT_COL  EQU 0
+
+CLOCK_COL_IH    EQU 30
+CLOCK_ROW_IH    EQU 16
+
+UI_MostrarReloj PROTO
+Sleep PROTO, dwMilliseconds:DWORD
 
 .DATA
 
@@ -21,11 +24,12 @@ currentStyle     BYTE STYLE_LIGHT
 PUBLIC necesitaRedibujo
 necesitaRedibujo BYTE 0
 
-; Historial PUBLIC para que ui_console lo lea
 PUBLIC uiMoveHistory
 PUBLIC uiMoveCount
-uiMoveHistory    BYTE 512 DUP(0)   ; 5 bytes por mov, max 102 movs
+uiMoveHistory    BYTE 512 DUP(0)
 uiMoveCount      DWORD 0
+
+cursorCol        BYTE 40
 
 promptMov    BYTE "> Mov (e2e4) s=estilo i=pista: ",0
 strLightMsg  BYTE "[CLASICO]",0
@@ -39,9 +43,6 @@ PUBLIC Entrada_LeerMovimientoUCI
 PUBLIC Entrada_LeerOpcionMenu
 PUBLIC Entrada_SolicitoPista
 
-; ===========================================================
-;  Inp_LimpiarPrompt - borra la zona del prompt
-; ===========================================================
 Inp_LimpiarPrompt PROC USES eax edx
     mov  dl, PROMPT_COL
     mov  dh, PROMPT_ROW
@@ -50,7 +51,6 @@ Inp_LimpiarPrompt PROC USES eax edx
     call SetTextColor
     mov  edx, OFFSET msgClearLine
     call WriteString
-    ; limpiar linea de error tambien
     mov  dl, PROMPT_COL
     mov  dh, PROMPT_ROW + 1
     call Gotoxy
@@ -59,9 +59,6 @@ Inp_LimpiarPrompt PROC USES eax edx
     ret
 Inp_LimpiarPrompt ENDP
 
-; ===========================================================
-;  Inp_MostrarPrompt - prompt en fila fija
-; ===========================================================
 Inp_MostrarPrompt PROC USES eax edx
     call Inp_LimpiarPrompt
     mov  dl, PROMPT_COL
@@ -86,18 +83,11 @@ MosPrompt_Imp:
     ret
 Inp_MostrarPrompt ENDP
 
-; ===========================================================
-;  Inp_RegistrarMov - guarda UCI en uiMoveHistory
-;  ESI = puntero al buffer UCI de 4 chars
-; ===========================================================
 Inp_RegistrarMov PROC USES eax ebx esi edx
-    ; offset = uiMoveCount * 5
     mov  eax, uiMoveCount
     imul eax, 5
     lea  ebx, uiMoveHistory
     add  ebx, eax
-
-    ; copiar 4 chars + null
     mov  al, BYTE PTR [esi+0]
     mov  BYTE PTR [ebx+0], al
     mov  al, BYTE PTR [esi+1]
@@ -107,14 +97,10 @@ Inp_RegistrarMov PROC USES eax ebx esi edx
     mov  al, BYTE PTR [esi+3]
     mov  BYTE PTR [ebx+3], al
     mov  BYTE PTR [ebx+4], 0
-
     inc  uiMoveCount
     ret
 Inp_RegistrarMov ENDP
 
-; ===========================================================
-;  Entrada_LeerOpcionMenu
-; ===========================================================
 Entrada_LeerOpcionMenu PROC USES edx
 Menu_Loop:
     call ReadChar
@@ -147,9 +133,29 @@ Entrada_LeerMovimientoUCI PROC USES ebx ecx esi edx
 
 UCI_Inicio:
     call Inp_MostrarPrompt
-    call ReadChar
+    mov  cursorCol, 40
 
-    ; 's' toggle estilo
+UCI_PollLoop:
+    call ReadKey
+    jnz  UCI_GotKey
+
+    push edx
+    push eax
+    mov  dl, CLOCK_COL_IH
+    mov  dh, CLOCK_ROW_IH
+    call Gotoxy
+    call UI_MostrarReloj
+    mov  eax, 7
+    call SetTextColor
+    mov  dl, cursorCol
+    mov  dh, PROMPT_ROW
+    call Gotoxy
+    pop  eax
+    pop  edx
+    INVOKE Sleep, 200
+    jmp  UCI_PollLoop
+
+UCI_GotKey:
     cmp  al, 's'
     jne  UCI_NoToggle
     cmp  currentStyle, STYLE_LIGHT
@@ -164,7 +170,6 @@ UCI_ToggleDone:
     ret
 
 UCI_NoToggle:
-    ; 'h' pista
     cmp  al, 'i'
     jne  UCI_LeerResto
     call WriteChar
@@ -176,19 +181,38 @@ UCI_NoToggle:
 UCI_LeerResto:
     call WriteChar
     mov  BYTE PTR [esi], al
+    inc  cursorCol
     mov  ebx, 1
+
 UCI_Loop:
     cmp  ebx, 4
     je   UCI_Validar
     call ReadChar
+
+    cmp  al, 08h
+    jne  UCI_NoBackspace
+    cmp  ebx, 0
+    je   UCI_Loop
+    dec  ebx
+    dec  cursorCol
+    mov  al, 08h
+    call WriteChar
+    mov  al, ' '
+    call WriteChar
+    mov  al, 08h
+    call WriteChar
+    jmp  UCI_Loop
+
+UCI_NoBackspace:
     call WriteChar
     mov  BYTE PTR [esi + ebx], al
     inc  ebx
+    inc  cursorCol
     jmp  UCI_Loop
 
 UCI_Validar:
     mov  BYTE PTR [esi + 4], 0
-    call ReadChar          ; consumir enter
+    call ReadChar
 
     mov  al, BYTE PTR [esi+0]
     cmp  al, 'a'
@@ -211,14 +235,11 @@ UCI_Validar:
     cmp  al, '8'
     ja   UCI_Invalido
 
-    ; movimiento valido: registrar en historial
     call Inp_RegistrarMov
-
     mov  al, 1
     ret
 
 UCI_Invalido:
-    ; mostrar error en linea de prompt+1, no en el tablero
     mov  dl, PROMPT_COL
     mov  dh, PROMPT_ROW + 1
     call Gotoxy

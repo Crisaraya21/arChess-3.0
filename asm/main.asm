@@ -7,14 +7,11 @@
 ;   - Si la IA falla (API caida, etc), deja al humano jugar por negras
 ;   - Los movimientos de la IA se registran en el historial
 ;
-; FIX PISTA:
-;   - Tecla 'h' se detecta despues de leer input (no con SolicitoPista)
-;   - WaitMsg despues de mostrar pista para que el usuario la vea
-;
-; FIX ONLINE:
-;   - EsperarRivalSiCorresponde ahora compara turno con rol del cliente
-;   - Cliente A solo juega en turno de blancas, Cliente B en turno de negras
-;   - Esto evita que ambos jugadores muevan al mismo tiempo
+; CAMBIOS v2:
+;   - UI_MostrarEstadoPartida se llama en cada iteracion del bucle
+;   - UI_MostrarResultado al terminar partida
+;   - Reloj se reinicia correctamente con clockSecondsLeft = 300
+;   - Verificar_MaterialInsuficiente agregado como condicion de tablas
 ; ===========================================================================
 
 INCLUDE Irvine32.inc
@@ -48,6 +45,7 @@ Validar_Movimiento               PROTO
 Verificar_ReyEnJaque             PROTO
 Verificar_JaqueMate              PROTO
 Verificar_Tablas                 PROTO
+Verificar_MaterialInsuficiente   PROTO
 
 UI_MostrarTablero                PROTO
 UI_MostrarMenuPrincipal          PROTO
@@ -63,6 +61,8 @@ UI_MostrarPistasAgotadas         PROTO
 UI_ActualizarReloj               PROTO
 UI_IniciarReloj                  PROTO
 UI_LimpiarPantalla               PROTO
+UI_MostrarEstadoPartida          PROTO
+UI_MostrarResultado              PROTO
 
 Entrada_LeerMovimientoUCI        PROTO
 Entrada_LeerOpcionMenu           PROTO
@@ -145,6 +145,9 @@ msgIAPensando       BYTE "  [IA] Pensando...",0Dh,0Ah,0
 msgIAJugo           BYTE "  [IA] Jugo: ",0
 msgIAFallo          BYTE "  [!] IA no pudo jugar. Ingrese movimiento para negras.",0Dh,0Ah,0
 msgNL               BYTE 0Dh, 0Ah, 0
+
+; Mensaje material insuficiente
+msgMaterialInsuf    BYTE "  [=] Material insuficiente para dar mate.",0Dh,0Ah,0
 
 ; ===========================================================================
 .code
@@ -248,7 +251,7 @@ Principal_IniciarPartida PROC
     push eax
     push ebx
     call Tablero_Inicializar
-    call UI_IniciarReloj
+    
     call Archivo_InicializarEstado
     mov  pistasUsadas,           0
     mov  partidaActiva,          1
@@ -263,6 +266,7 @@ Principal_IniciarPartida PROC
 IniciarPartida_NoOnline:
     call Archivo_EscribirEstado
 IniciarPartida_Jugar:
+    call UI_IniciarReloj
     call Principal_BucleJuego
     pop  ebx
     pop  eax
@@ -291,6 +295,7 @@ Bucle_Inicio:
     call UI_MostrarTurno
     call UI_MostrarReloj
     call UI_MostrarHistorial
+    call UI_MostrarEstadoPartida
 
     call Tablero_ObtenerJaque
     cmp  al, 0
@@ -377,6 +382,20 @@ Bucle_PostMovimiento:
     call UI_ActualizarReloj
     call Tablero_CambiarTurno
 
+    ; --- Verificar material insuficiente ---
+    call Verificar_MaterialInsuficiente
+    cmp  al, 1
+    jne  Bucle_VerJaque
+
+    ; Material insuficiente = tablas
+    mov  al, ESTADO_TABLAS
+    call Tablero_EstablecerEstado
+    call UI_MostrarTablas
+    mov  edx, OFFSET msgMaterialInsuf
+    call WriteString
+    jmp  Bucle_SincronizarFin
+
+Bucle_VerJaque:
     ; --- Detectar jaque ---
     call Tablero_ObtenerTurno
     movzx eax, al
@@ -431,7 +450,13 @@ Bucle_SincronizarFin:
     jmp  Bucle_Inicio
 
 Bucle_FinPartida:
+    call UI_LimpiarPantalla
     call UI_MostrarTablero
+
+    ; Mostrar resultado final detallado
+    call Tablero_ObtenerEstado
+    call UI_MostrarResultado
+
     cmp  modoJuego, MODO_EN_LINEA
     jne  FinPartida_NoOnline
     call Sync_TerminarSesion
@@ -683,16 +708,6 @@ Principal_ManejarPista ENDP
 
 ; ===========================================================================
 ; Principal_EsperarRivalSiCorresponde
-;
-; FIX ONLINE: Ahora compara el turno actual con el rol del cliente.
-;   Cliente A ('a') juega blancas (turno 0)
-;   Cliente B ('b') juega negras  (turno 1)
-;
-;   Si el turno actual corresponde a MI rol -> retorna 0 (jugar local)
-;   Si el turno actual es del RIVAL -> espera polling hasta que llegue
-;
-; Retorna: AL = 1 si el rival jugo (movimiento aplicado)
-;          AL = 0 si es mi turno (debo jugar yo)
 ; ===========================================================================
 Principal_EsperarRivalSiCorresponde PROC
     push ebx
@@ -776,7 +791,7 @@ Esperar_ErrorRemoto:
 
 Esperar_EsTurnoLocal:
     mov  al, 0
-
+    
 Esperar_Fin:
     pop  edi
     pop  esi

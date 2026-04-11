@@ -35,7 +35,7 @@ import os
 import json
 import time
 import traceback
-
+from security import cifrar_estado, descifrar_estado
 import firebase_admin
 from firebase_admin import credentials, db
 
@@ -177,6 +177,7 @@ def subir_estado(rol):
 
     try:
         ref = db.reference(ruta_escritura)
+        estado = cifrar_estado(estado)
         ref.set(estado)
         print(f"[SYNC] [{rol.upper()}] Estado subido a {ruta_escritura}. "
               f"version={version}")

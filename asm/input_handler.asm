@@ -34,6 +34,7 @@ msgInvalido  BYTE "  Entrada invalida, intente de nuevo.   ",0
 msgClearLine BYTE "                                                  ",0
 
 .CODE
+UI_MostrarReloj PROTO
 
 PUBLIC Entrada_LeerMovimientoUCI
 PUBLIC Entrada_LeerOpcionMenu
@@ -63,6 +64,7 @@ Inp_LimpiarPrompt ENDP
 ;  Inp_MostrarPrompt - prompt en fila fija
 ; ===========================================================
 Inp_MostrarPrompt PROC USES eax edx
+    call UI_MostrarReloj 
     call Inp_LimpiarPrompt
     mov  dl, PROMPT_COL
     mov  dh, PROMPT_ROW
@@ -211,8 +213,7 @@ UCI_Validar:
     cmp  al, '8'
     ja   UCI_Invalido
 
-    ; movimiento valido: registrar en historial
-    call Inp_RegistrarMov
+
 
     mov  al, 1
     ret

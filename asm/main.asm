@@ -17,6 +17,8 @@
 ;   - Esto evita que ambos jugadores muevan al mismo tiempo
 ; ===========================================================================
 
+
+
 INCLUDE Irvine32.inc
 
 COLOR_BLANCO        EQU 0
@@ -320,6 +322,8 @@ Bucle_EscogerFuente:
     ; Intentar que la IA juegue
     call Principal_TurnoIA
     cmp  al, 1
+    jne  Bucle_TurnoHumano_Fallback
+    call UI_ActualizarReloj 
     je   Bucle_PostMovimiento
 
     ; IA fallo: dejar que el humano juegue por negras
@@ -328,6 +332,7 @@ Bucle_EscogerFuente:
     ; Cae al turno humano para que ingrese movimiento manual
 
 Bucle_TurnoHumano:
+    call UI_MostrarReloj 
 Bucle_LeerMovimiento:
     mov  edx, OFFSET bufferMovUCI
     call Entrada_LeerMovimientoUCI
@@ -366,6 +371,7 @@ Bucle_ValidarMovimiento:
     mov  edx, OFFSET bufferMovUCI
     call Archivo_ActualizarLastMove
     call Sync_RegistrarMovimiento
+    call Main_RegistrarMovEnHistorial
     jmp  Bucle_PostMovimiento
 
 Bucle_MovimientoIlegal:

@@ -40,11 +40,11 @@ cmdPythonSync   BYTE 512 DUP(0)
 sufGameState    BYTE "data\game_state.json", 0
 sufMovesLog     BYTE "data\moves.log", 0
 sufHintJson     BYTE "data\hint.json", 0
-sufSyncFlag     BYTE "data\sync_flag.txt", 0
+sufSyncFlag     BYTE "data\sync_flag.txt", 0    
 sufAIService    BYTE "services\ai_service.py", 0
 sufSyncService  BYTE 'services\sync_service.py" ', 0
 
-prefPython      BYTE 'python.exe "', 0
+prefPython      BYTE '"C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe" "', 0
 
 ; ===========================================================================
 .code

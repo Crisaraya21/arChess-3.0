@@ -9,7 +9,7 @@ INCLUDE Irvine32.inc
 
 POLL_INTERVAL_MS        EQU 1000
 PROCESS_TIMEOUT_MS      EQU 15000
-NORMAL_PRIORITY_CLS     EQU 00000020h
+NORMAL_PRIORITY_CLS     EQU 08000020h
 STARTF_USE_SHOWWINDOW   EQU 00000001h
 SW_HIDE_WIN             EQU 0
 
@@ -366,6 +366,14 @@ Sync_LanzarListener PROC
     lea  esi, sufListen
     call Sync_ConstruirComando
     call Sync_PrepararEstructuras
+
+    ; --- DEBUG: ver comando construido ---
+    mov  edx, OFFSET cmdBuffer
+    call WriteString
+    call Crlf
+    call WaitMsg
+    ; --- FIN DEBUG ---
+
     INVOKE CreateProcessA,
         NULL, ADDR cmdBuffer, NULL, NULL, 0,
         NORMAL_PRIORITY_CLS, NULL, NULL,

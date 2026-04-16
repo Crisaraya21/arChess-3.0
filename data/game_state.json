@@ -1,9 +1,11 @@
 {
+  "encrypted": true,
+  "fen": "ExwhGQ4RHUFwOTNDQUBBL0IfChlZXXE4UFxLHA8ZcmNhYGEPHWJ8dDA5ASY3",
   "gameId": "partida_default",
-  "version": 1,
+  "integrity": "cbe746e9356fd85f717c045ac9b81058bb3115e4e1475464a3172b20a87d11f2",
+  "lastMove": "AkAgXA==",
+  "status": "ongoing",
   "turn": "b",
-  "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR",
-  "lastMove": "e2e4",
-  "updatedAt": "2026-04-11T16:29:48Z",
-  "status": "ongoing"
+  "updatedAt": "2026-04-15T18:07:33Z",
+  "version": 1
 }

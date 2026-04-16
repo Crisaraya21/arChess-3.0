@@ -101,25 +101,25 @@ strHistLabel     BYTE "--- Historial ---",0
 strNoHints       BYTE "  Sin pistas.   ",0
 strClockAgotado  BYTE "AGOTADO! ",0
 
-strEstadoEnCurso    BYTE "Estado: EN CURSO            ",0
+strEstadoEnCurso     BYTE "Estado: EN CURSO            ",0
 strEstadoGanaBlancas BYTE "Estado: GANAN BLANCAS!      ",0
-strEstadoGanaNegras BYTE "Estado: GANAN NEGRAS!       ",0
-strEstadoTablas     BYTE "Estado: TABLAS (empate)      ",0
-strEstadoLabel      BYTE "Movimientos: ",0
+strEstadoGanaNegras  BYTE "Estado: GANAN NEGRAS!       ",0
+strEstadoTablas      BYTE "Estado: TABLAS (empate)      ",0
+strEstadoLabel       BYTE "Movimientos: ",0
 
-strResultTitulo     BYTE "========================================",0Dh,0Ah
-                    BYTE "        PARTIDA FINALIZADA              ",0Dh,0Ah
-                    BYTE "========================================",0Dh,0Ah,0
-strResultGanaB      BYTE "  Resultado: GANAN LAS BLANCAS",0Dh,0Ah,0
-strResultGanaN      BYTE "  Resultado: GANAN LAS NEGRAS",0Dh,0Ah,0
-strResultTablas     BYTE "  Resultado: TABLAS (empate)",0Dh,0Ah,0
-strResultMoves      BYTE "  Total movimientos: ",0
-strResultTiempo     BYTE "  Pierde por tiempo!",0Dh,0Ah,0
+strResultTitulo  BYTE "========================================",0Dh,0Ah
+                 BYTE "        PARTIDA FINALIZADA              ",0Dh,0Ah
+                 BYTE "========================================",0Dh,0Ah,0
+strResultGanaB   BYTE "  Resultado: GANAN LAS BLANCAS",0Dh,0Ah,0
+strResultGanaN   BYTE "  Resultado: GANAN LAS NEGRAS",0Dh,0Ah,0
+strResultTablas  BYTE "  Resultado: TABLAS (empate)",0Dh,0Ah,0
+strResultMoves   BYTE "  Total movimientos: ",0
+strResultTiempo  BYTE "  Pierde por tiempo!",0Dh,0Ah,0
 
 ; --- Reloj acumulativo por jugador ---
-clockWhiteMs     DWORD 300000    ; 5 min en milisegundos para blancas
-clockBlackMs     DWORD 300000    ; 5 min en milisegundos para negras
-clockTurnStart   DWORD 0         ; tick al inicio del turno actual
+clockWhiteMs     DWORD 300000
+clockBlackMs     DWORD 300000
+clockTurnStart   DWORD 0
 clockBuf         BYTE "05:00",0,0,0
 clockBuf2        BYTE "05:00",0,0,0
 
@@ -137,11 +137,13 @@ moveCountLocal   DWORD 0
 
 .CODE
 
+; ===========================================================
 UI_ClrReset PROC
     mov  eax, CLR_DARK_RESET
     ret
 UI_ClrReset ENDP
 
+; ===========================================================
 UI_ClrInfo PROC
     cmp  currentStyle, STYLE_DARK
     jne  ClrInfo_Light
@@ -152,6 +154,7 @@ ClrInfo_Light:
     ret
 UI_ClrInfo ENDP
 
+; ===========================================================
 UI_ClrCheck PROC
     cmp  currentStyle, STYLE_DARK
     jne  ClrCheck_Light
@@ -162,6 +165,7 @@ ClrCheck_Light:
     ret
 UI_ClrCheck ENDP
 
+; ===========================================================
 UI_ClrHint PROC
     cmp  currentStyle, STYLE_DARK
     jne  ClrHint_Light
@@ -172,6 +176,7 @@ ClrHint_Light:
     ret
 UI_ClrHint ENDP
 
+; ===========================================================
 UI_ClrCasilla PROC
     cmp  currentStyle, STYLE_DARK
     jne  ClrCas_Light
@@ -192,6 +197,7 @@ ClrCas_LightOsc:
     ret
 UI_ClrCasilla ENDP
 
+; ===========================================================
 UI_ClrPiezaBlanca PROC
     cmp  currentStyle, STYLE_DARK
     jne  ClrPB_Normal
@@ -207,6 +213,7 @@ ClrPB_Normal:
     ret
 UI_ClrPiezaBlanca ENDP
 
+; ===========================================================
 UI_ClrPiezaNegra PROC
     cmp  currentStyle, STYLE_DARK
     jne  ClrPN_Normal
@@ -222,27 +229,39 @@ ClrPN_Normal:
     ret
 UI_ClrPiezaNegra ENDP
 
+; ===========================================================
 UI_Goto PROC
     call Gotoxy
     ret
 UI_Goto ENDP
 
-UI_LimpiarPantalla PROC USES eax
+; ===========================================================
+UI_LimpiarPantalla PROC
+    push eax
     mov  eax, CLR_RESET
     call SetTextColor
     call Clrscr
+    pop  eax
     ret
 UI_LimpiarPantalla ENDP
 
-UI_MostrarMenuPrincipal PROC USES eax
+; ===========================================================
+UI_MostrarMenuPrincipal PROC
+    push eax
     mov  eax, CLR_RESET
     call SetTextColor
     call Clrscr
+    pop  eax
     ret
 UI_MostrarMenuPrincipal ENDP
 
 ; ===========================================================
-UI_MostrarHistorial PROC USES eax ecx edx esi
+UI_MostrarHistorial PROC
+    push eax
+    push ecx
+    push edx
+    push esi
+
     call UI_ClrHint
     mov  dl, HIST_COL
     mov  dh, HIST_ROW
@@ -308,11 +327,19 @@ Hist_SigLinea:
     loop Hist_Loop
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  esi
+    pop  edx
+    pop  ecx
+    pop  eax
     ret
 UI_MostrarHistorial ENDP
 
 ; ===========================================================
-UI_MostrarTablero PROC USES eax edx esi
+UI_MostrarTablero PROC
+    push eax
+    push edx
+    push esi
 
     call UI_ClrInfo
     mov  dl, BOARD_COL
@@ -440,10 +467,18 @@ Tab_FinFilas:
     mov  eax, CLR_RESET
     call SetTextColor
     call UI_MostrarHistorial
+
+    pop  esi
+    pop  edx
+    pop  eax
     ret
 UI_MostrarTablero ENDP
 
-UI_MostrarTurno PROC USES eax edx
+; ===========================================================
+UI_MostrarTurno PROC
+    push eax
+    push edx
+
     mov  dl, STATUS_COL
     mov  dh, STATUS_ROW
     call UI_Goto
@@ -468,10 +503,17 @@ MosTurno_Imp:
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarTurno ENDP
 
-UI_MostrarJaque PROC USES eax edx
+; ===========================================================
+UI_MostrarJaque PROC
+    push eax
+    push edx
+
     mov  dl, STATUS_COL
     mov  dh, STATUS_ROW + 1
     call UI_Goto
@@ -481,10 +523,17 @@ UI_MostrarJaque PROC USES eax edx
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarJaque ENDP
 
-UI_MostrarJaqueMate PROC USES eax edx
+; ===========================================================
+UI_MostrarJaqueMate PROC
+    push eax
+    push edx
+
     mov  dl, STATUS_COL
     mov  dh, STATUS_ROW + 1
     call UI_Goto
@@ -494,10 +543,17 @@ UI_MostrarJaqueMate PROC USES eax edx
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarJaqueMate ENDP
 
-UI_MostrarTablas PROC USES eax edx
+; ===========================================================
+UI_MostrarTablas PROC
+    push eax
+    push edx
+
     mov  dl, STATUS_COL
     mov  dh, STATUS_ROW + 1
     call UI_Goto
@@ -507,10 +563,17 @@ UI_MostrarTablas PROC USES eax edx
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarTablas ENDP
 
-UI_MostrarMovimientoIlegal PROC USES eax edx
+; ===========================================================
+UI_MostrarMovimientoIlegal PROC
+    push eax
+    push edx
+
     mov  dl, STATUS_COL
     mov  dh, STATUS_ROW + 1
     call UI_Goto
@@ -520,17 +583,20 @@ UI_MostrarMovimientoIlegal PROC USES eax edx
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarMovimientoIlegal ENDP
 
 ; ===========================================================
-;  UI_IniciarReloj - 5 min para cada jugador
-; ===========================================================
-UI_IniciarReloj PROC USES eax
+UI_IniciarReloj PROC
+    push eax
     call GetTickCount
     mov  clockTurnStart, eax
     mov  clockWhiteMs, 300000
     mov  clockBlackMs, 300000
+    pop  eax
     ret
 UI_IniciarReloj ENDP
 
@@ -539,21 +605,23 @@ UI_IniciarReloj ENDP
 ;  EAX = milisegundos restantes
 ;  EDI = puntero a buffer de 6 bytes para "MM:SS"
 ; ===========================================================
-Clk_FormatearTiempo PROC USES ebx ecx edx
-    ; Convertir ms a segundos
+Clk_FormatearTiempo PROC
+    push ebx
+    push ecx
+    push edx
+
+    ; ms -> segundos
     xor  edx, edx
     mov  ebx, 1000
     div  ebx
-    ; EAX = segundos totales
 
-    ; Dividir en minutos y segundos
+    ; segundos -> minutos y segundos
     xor  edx, edx
     mov  ebx, 60
     div  ebx
-    ; EAX = minutos, EDX = segundos
     push edx
 
-    ; Minutos -> 2 digitos
+    ; minutos -> 2 digitos
     xor  edx, edx
     mov  ecx, 10
     div  ecx
@@ -563,7 +631,7 @@ Clk_FormatearTiempo PROC USES ebx ecx edx
     mov  BYTE PTR [edi+1], dl
     mov  BYTE PTR [edi+2], ':'
 
-    ; Segundos -> 2 digitos
+    ; segundos -> 2 digitos
     pop  eax
     xor  edx, edx
     div  ecx
@@ -573,30 +641,32 @@ Clk_FormatearTiempo PROC USES ebx ecx edx
     mov  BYTE PTR [edi+4], dl
     mov  BYTE PTR [edi+5], 0
 
+    pop  edx
+    pop  ecx
+    pop  ebx
     ret
 Clk_FormatearTiempo ENDP
 
 ; ===========================================================
-;  UI_MostrarReloj - Muestra ambos relojes
-;  Calcula tiempo restante del jugador activo en tiempo real
-; ===========================================================
-UI_MostrarReloj PROC USES eax ebx ecx edx edi
-    ; Calcular ms transcurridos desde inicio del turno
+UI_MostrarReloj PROC
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push edi
+
     call GetTickCount
     sub  eax, clockTurnStart
-    mov  ebx, eax              ; EBX = ms transcurridos
+    mov  ebx, eax
 
-    ; Determinar quien tiene el turno
     push ebx
     call Tablero_ObtenerTurno
     mov  turnoLocal, al
     pop  ebx
 
-    ; Calcular tiempo restante del jugador activo
     cmp  turnoLocal, COLOR_BLANCO
     jne  MosReloj_CalcNegras
 
-    ; Turno blancas: restar del banco de blancas
     mov  eax, clockWhiteMs
     cmp  ebx, eax
     jae  MosReloj_BlancasAgotado
@@ -605,11 +675,9 @@ UI_MostrarReloj PROC USES eax ebx ecx edx edi
 MosReloj_BlancasAgotado:
     xor  eax, eax
 MosReloj_BlancasOk:
-    ; EAX = ms restantes blancas (en vivo)
     push eax
     lea  edi, clockBuf
     call Clk_FormatearTiempo
-    ; Formatear negras (su banco guardado, no cambia)
     mov  eax, clockBlackMs
     lea  edi, clockBuf2
     call Clk_FormatearTiempo
@@ -617,7 +685,6 @@ MosReloj_BlancasOk:
     jmp  MosReloj_Mostrar
 
 MosReloj_CalcNegras:
-    ; Turno negras: restar del banco de negras
     mov  eax, clockBlackMs
     cmp  ebx, eax
     jae  MosReloj_NegrasAgotado
@@ -629,14 +696,12 @@ MosReloj_NegrasOk:
     push eax
     lea  edi, clockBuf2
     call Clk_FormatearTiempo
-    ; Formatear blancas (su banco guardado)
     mov  eax, clockWhiteMs
     lea  edi, clockBuf
     call Clk_FormatearTiempo
     pop  eax
 
 MosReloj_Mostrar:
-    ; Linea 1: Blancas
     mov  dl, CLOCK_COL
     mov  dh, CLOCK_ROW
     call UI_Goto
@@ -650,7 +715,6 @@ MosReloj_Mostrar:
     call WriteChar
     call WriteChar
 
-    ; Linea 2: Negras
     mov  dl, CLOCK_COL
     mov  dh, CLOCK_ROW + 1
     call UI_Goto
@@ -664,25 +728,28 @@ MosReloj_Mostrar:
 
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edi
+    pop  edx
+    pop  ecx
+    pop  ebx
+    pop  eax
     ret
 UI_MostrarReloj ENDP
 
 ; ===========================================================
-;  UI_ActualizarReloj - Guardar tiempo al cambiar turno
-;  Llamar ANTES de Tablero_CambiarTurno
-; ===========================================================
-UI_ActualizarReloj PROC USES eax ebx
-    ; Calcular ms transcurridos en este turno
+UI_ActualizarReloj PROC
+    push eax
+    push ebx
+
     call GetTickCount
     sub  eax, clockTurnStart
-    mov  ebx, eax              ; EBX = ms gastados
+    mov  ebx, eax
 
-    ; Descontar del jugador que acaba de jugar
     call Tablero_ObtenerTurno
     cmp  al, COLOR_BLANCO
     jne  ActReloj_Negras
 
-    ; Blancas acaban de jugar
     cmp  ebx, clockWhiteMs
     jae  ActReloj_WhiteZero
     sub  clockWhiteMs, ebx
@@ -700,13 +767,19 @@ ActReloj_BlackZero:
     mov  clockBlackMs, 0
 
 ActReloj_Reset:
-    ; Reiniciar marca de tiempo para el siguiente turno
     call GetTickCount
     mov  clockTurnStart, eax
+
+    pop  ebx
+    pop  eax
     ret
 UI_ActualizarReloj ENDP
 
-UI_MostrarPista PROC USES eax edx
+; ===========================================================
+UI_MostrarPista PROC
+    push eax
+    push edx
+
     mov  dl, HINT_COL
     mov  dh, HINT_ROW
     call UI_Goto
@@ -718,10 +791,17 @@ UI_MostrarPista PROC USES eax edx
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarPista ENDP
 
-UI_MostrarPistasAgotadas PROC USES eax edx
+; ===========================================================
+UI_MostrarPistasAgotadas PROC
+    push eax
+    push edx
+
     mov  dl, HINT_COL
     mov  dh, HINT_ROW
     call UI_Goto
@@ -731,13 +811,17 @@ UI_MostrarPistasAgotadas PROC USES eax edx
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarPistasAgotadas ENDP
 
 ; ===========================================================
-;  UI_MostrarEstadoPartida
-; ===========================================================
-UI_MostrarEstadoPartida PROC USES eax edx
+UI_MostrarEstadoPartida PROC
+    push eax
+    push edx
+
     mov  dl, GAME_STATUS_COL
     mov  dh, GAME_STATUS_ROW
     call UI_Goto
@@ -771,14 +855,17 @@ MosEst_Imprimir:
     call WriteString
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarEstadoPartida ENDP
 
 ; ===========================================================
-;  UI_MostrarResultado
-;  AL = estado (1=gana blancas, 2=gana negras, 3=tablas)
-; ===========================================================
-UI_MostrarResultado PROC USES eax edx
+UI_MostrarResultado PROC
+    push eax
+    push edx
+
     push eax
     call UI_ClrCheck
     call SetTextColor
@@ -807,7 +894,6 @@ MosRes_Tablas:
 
 MosRes_ImpRes:
     call WriteString
-
     call UI_ClrInfo
     call SetTextColor
     mov  edx, OFFSET strResultMoves
@@ -819,6 +905,9 @@ MosRes_ImpRes:
 MosRes_Fin:
     mov  eax, CLR_RESET
     call SetTextColor
+
+    pop  edx
+    pop  eax
     ret
 UI_MostrarResultado ENDP
 

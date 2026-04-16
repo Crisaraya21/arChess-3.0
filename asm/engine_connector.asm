@@ -8,10 +8,10 @@
 
 INCLUDE Irvine32.inc
 
-EC_NORMAL_PRIORITY      EQU 00000020h
+EC_NORMAL_PRIORITY      EQU 08000020h
 EC_STARTF_SHOWWINDOW    EQU 00000001h
 EC_SW_HIDE              EQU 0
-EC_PROCESS_TIMEOUT      EQU 20000
+EC_PROCESS_TIMEOUT      EQU 60000
 
 EC_STARTUPINFO STRUCT
     eCb              DWORD ?
@@ -116,6 +116,7 @@ EC_LanzarAIService PROC
     push esi
     push edi
     call EC_PrepararEstructuras
+
     INVOKE CreateProcessA,
         NULL, ADDR cmdPythonAI, NULL, NULL, 0,
         EC_NORMAL_PRIORITY, NULL, NULL,

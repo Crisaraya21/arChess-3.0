@@ -105,9 +105,9 @@ PUBLIC Archivo_EscribirBandera
 PUBLIC Archivo_LeerPista
 PUBLIC Archivo_GenerarFEN
 PUBLIC Archivo_IncrementarVersion
-
 Archivo_InicializarEstado PROC
     push eax
+    push ebx
     push ecx
     push esi
     push edi
@@ -124,9 +124,21 @@ Archivo_InicializarEstado PROC
     lea  edi, archivoStatus
     call Aux_CopiarStr
     call Aux_GenerarTimestamp
+
+    ; --- Limpiar moves.log al iniciar partida nueva ---
+    mov  edx, OFFSET rutaMovesLog
+    call CreateOutputFile
+    cmp  eax, INVALID_HANDLE
+    je   InitEst_SkipLog
+    mov  ebx, eax
+    mov  eax, ebx
+    call CloseFile
+InitEst_SkipLog:
+
     pop  edi
     pop  esi
     pop  ecx
+    pop  ebx
     pop  eax
     ret
 Archivo_InicializarEstado ENDP

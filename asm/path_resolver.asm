@@ -42,7 +42,7 @@ sufMovesLog     BYTE "data\moves.log", 0
 sufHintJson     BYTE "data\hint.json", 0
 sufSyncFlag     BYTE "data\sync_flag.txt", 0    
 sufAIService    BYTE "services\ai_service.py", 0
-sufSyncService  BYTE 'services\sync_service.py" ', 0
+sufSyncService  BYTE "services\sync_service.py", 0
 
 prefPython      BYTE '"C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe" "', 0
 
@@ -170,6 +170,15 @@ Rutas_SubirDone:
     mov  edi, esi
     lea  esi, sufSyncService
     call PR_CopiarStr
+    ; Agregar comilla de cierre + espacio
+    lea  edi, cmdPythonSync
+    call PR_FinStr
+    mov  edi, esi
+    mov  BYTE PTR [edi], '"'
+    inc  edi
+    mov  BYTE PTR [edi], ' '
+    inc  edi
+    mov  BYTE PTR [edi], 0
 
 Rutas_Fin:
     pop  edi

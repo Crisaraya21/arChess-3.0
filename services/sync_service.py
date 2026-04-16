@@ -208,14 +208,6 @@ def subir_historial(rol):
 
 
 def descargar_estado(rol):
-    """
-    Descarga el estado del subespacio del RIVAL.
-    Cliente A lee de /partidas/{id}/cliente_b/estado
-    Cliente B lee de /partidas/{id}/cliente_a/estado
-    
-    Solo actualiza si la versión remota es mayor que la local.
-    Escribe sync_flag.txt = "1" para notificar a MASM.
-    """
     game_id = obtener_game_id()
     _, ruta_lectura, _ = obtener_rutas_firebase(game_id, rol)
 
@@ -228,6 +220,10 @@ def descargar_estado(rol):
 
     if not estado_remoto or not isinstance(estado_remoto, dict):
         return False
+
+    # Descifrar si viene cifrado
+    if estado_remoto.get('encrypted', False):
+        estado_remoto = descifrar_estado(estado_remoto)
 
     version_remota = estado_remoto.get("version", 0)
     version_local = obtener_version_local()
@@ -243,7 +239,6 @@ def descargar_estado(rol):
         return True
 
     return False
-
 
 def descargar_historial(rol):
     """Descarga el historial compartido."""
@@ -263,8 +258,6 @@ def descargar_historial(rol):
             f.write(historial)
         return True
     return False
-
-
 # ===========================================================================
 # Modo escucha con subespacios
 # ===========================================================================

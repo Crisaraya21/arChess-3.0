@@ -9,13 +9,13 @@ INCLUDE Irvine32.inc
 
 POLL_INTERVAL_MS        EQU 1000
 PROCESS_TIMEOUT_MS      EQU 15000
-NORMAL_PRIORITY_CLS     EQU 08000020h
+NORMAL_PRIORITY_CLS     EQU 00000020h
 STARTF_USE_SHOWWINDOW   EQU 00000001h
 SW_HIDE_WIN             EQU 0
 
 STARTUPINFO_S STRUCT
     sCb              DWORD ?
-    sReserved        DWORD ?
+    sReserved        DWORD ?    
     sDesktop         DWORD ?
     sTitle           DWORD ?
     sDwX             DWORD ?
@@ -113,18 +113,12 @@ PUBLIC Sync_RegistrarMovimiento
 PUBLIC Sync_VerificarActualizacion
 
 ; ===========================================================================
-; Sync_ConstruirComando
-; Construye: cmdPythonSync + sufijo + rol
-; cmdPythonSync ya tiene: python.exe "...\sync_service.py"
-; Le concatenamos: upload/download/listen + a/b
-; ===========================================================================
 Sync_ConstruirComando PROC
     push eax
     push esi
     push edi
     lea  edi, cmdBuffer
 
-    ; Copiar cmdPythonSync (base del comando)
     push esi
     lea  esi, cmdPythonSync
 Cmd_CopiarBase:
@@ -138,7 +132,6 @@ Cmd_CopiarBase:
 Cmd_BaseDone:
     pop  esi
 
-    ; Copiar sufijo (upload/download/listen)
 Cmd_CopiarSufijo:
     mov  al, [esi]
     cmp  al, 0
@@ -149,7 +142,6 @@ Cmd_CopiarSufijo:
     jmp  Cmd_CopiarSufijo
 Cmd_SufijoDone:
 
-    ; Agregar rol (a/b)
     mov  al, syncRolCliente
     mov  [edi], al
     inc  edi
@@ -211,11 +203,6 @@ IniciarSesion_Fin:
     ret
 Sync_IniciarSesion ENDP
 
-; ===========================================================================
-; Sync_TerminarSesion
-; Termina el proceso listener y libera su handle.
-; Llamar al salir del modo online.
-; ===========================================================================
 Sync_TerminarSesion PROC
     push eax
     cmp  listenProcHandle, 0
@@ -338,9 +325,9 @@ Sync_LanzarProceso PROC
     cmp  eax, 0
     je   LanzarProc_Error
     INVOKE WaitForSingleObject, procInf.piProcess, PROCESS_TIMEOUT_MS
-    cmp  eax, 0                         ; WAIT_OBJECT_0 = proceso termino ok
+    cmp  eax, 0
     je   LanzarProc_Cerrar
-    INVOKE TerminateProcess, procInf.piProcess, 1  ; timeout: matar proceso
+    INVOKE TerminateProcess, procInf.piProcess, 1
 LanzarProc_Cerrar:
     INVOKE CloseHandle, procInf.piThread
     INVOKE CloseHandle, procInf.piProcess
@@ -366,14 +353,6 @@ Sync_LanzarListener PROC
     lea  esi, sufListen
     call Sync_ConstruirComando
     call Sync_PrepararEstructuras
-
-    ; --- DEBUG: ver comando construido ---
-    mov  edx, OFFSET cmdBuffer
-    call WriteString
-    call Crlf
-    call WaitMsg
-    ; --- FIN DEBUG ---
-
     INVOKE CreateProcessA,
         NULL, ADDR cmdBuffer, NULL, NULL, 0,
         NORMAL_PRIORITY_CLS, NULL, NULL,

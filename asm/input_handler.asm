@@ -43,6 +43,7 @@ UI_MostrarReloj PROTO
 PUBLIC Entrada_LeerMovimientoUCI
 PUBLIC Entrada_LeerOpcionMenu
 PUBLIC Entrada_SolicitoPista
+PUBLIC Inp_RegistrarMov
 
 Inp_LimpiarPrompt PROC USES eax edx
     mov  dl, PROMPT_COL
@@ -236,9 +237,6 @@ UCI_Validar:
     jb   UCI_Invalido
     cmp  al, '8'
     ja   UCI_Invalido
-
-    ; movimiento valido: registrar en historial
-    call Inp_RegistrarMov
 
     mov  al, 1
     ret

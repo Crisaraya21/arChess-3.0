@@ -272,11 +272,12 @@ UI_MostrarHistorial PROC
 
     mov  eax, uiMoveCount
     mov  moveCountLocal, eax
+    mov  esi, 0
     cmp  eax, MAX_HIST_VISIBLE
     jle  Hist_NoScroll
     sub  eax, MAX_HIST_VISIBLE
-Hist_NoScroll:
     mov  esi, eax
+Hist_NoScroll:
     mov  ecx, MAX_HIST_VISIBLE
     mov  dh,  HIST_ROW + 1
 
@@ -305,11 +306,13 @@ Hist_PuntoDoble:
 Hist_ImpMov:
     mov  al, ' '
     call WriteChar
+    push edx
     mov  eax, esi
     imul eax, 5
     lea  edx, uiMoveHistory
     add  edx, eax
     call WriteString
+    pop  edx
     jmp  Hist_SigLinea
 
 Hist_LimpiaLinea:

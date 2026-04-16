@@ -1,8 +1,8 @@
 {
   "gameId": "partida_default",
-  "basedOnVersion": 1,
-  "bestMove": "d2d4",
-  "scoreCp": 38,
+  "basedOnVersion": 8,
+  "bestMove": "b8c6",
+  "scoreCp": 26,
   "depth": 12,
-  "pv": "d2d4"
+  "pv": "b8c6"
 }
